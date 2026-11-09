@@ -15,7 +15,7 @@ Prepared November 9, 2026, America/Los_Angeles.
 
 ## Technical choices
 
-Capacitor core/CLI/iOS 8.6.0 and App plugin 8.1.2 are pinned. Swift Package Manager avoids a CocoaPods setup. GitHub macOS 15/Xcode 26.2 builds a Release device app with signing disabled, then packages `Payload/TURC.app` in an IPA. This bypasses the signed export process; the owner supplies signing later.
+Capacitor core/CLI/iOS 8.6.0 and App plugin 8.1.2 are pinned. Swift Package Manager avoids a CocoaPods setup. GitHub macOS 26/Xcode 26.2 builds a Release device app with signing disabled, then packages `Payload/TURC.app` in an IPA. This bypasses the signed export process; the owner supplies signing later.
 
 The existing CSS glass design is preserved. It is not a SwiftUI rewrite. Native changes cover secure session persistence, lifecycle refresh, explicit website opening, and CSV sharing. The native bridge exposes only TURC's three session keys and two known CSV export names.
 
