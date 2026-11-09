@@ -1,5 +1,7 @@
 # TURC iOS foundation
 
+**Latest milestone:** see [native scanning](scanning-checkpoint.md) for version 0.2.0, QR/NFC, and shared lap recording. The owner confirmed that build 2 installed and signed in successfully; entries below record the original foundation milestone.
+
 Prepared November 9, 2026, America/Los_Angeles.
 
 ## Source and backend
@@ -24,7 +26,7 @@ The existing CSS glass design is preserved. It is not a SwiftUI rewrite. Native 
 Local verification passed: 14 Node test entries (11 refresh regressions, CSV checks, and two native-storage tests), native project/XML/plist structural checks, and IPA shell syntax. Headless Chrome checked the app at 440 × 956 CSS pixels with fictional data: sign-in, roster rendering, no horizontal overflow, resume/search retention, and sign-out. The real vendored SDK also opened the signed-out screen successfully. No live authenticated iOS test has occurred.
 
 - [x] macOS Actions compilation succeeds and artifact contains an arm64 device executable.
-- [ ] Sign/sideload the IPA on iPhone 17 Pro Max with the owner's method.
+- [x] Sign/sideload build 2 with the owner's method (reported successful).
 - [ ] Sign in with an existing TURC adult account; verify correct school and role.
 - [ ] Verify website-imported fictional runners appear in the app and app edits appear on the website.
 - [ ] Relaunch the app; session restores from Keychain.

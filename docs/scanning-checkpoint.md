@@ -26,3 +26,11 @@ Migration `20261109221649_turc_native_scanning` is applied to the existing hoste
 - [ ] Simulate a lost response and retry the original event without double credit.
 
 Twenty-minute field operation, tag placement, simultaneous camera/NFC operation, offline reconciliation, schedule warnings, corrections, milestones, and actual-size badge sheet printing are not declared complete by this milestone.
+
+## Verified build 4
+
+GitHub Actions [run 4](https://github.com/richardmeyer2003/truc-ios/actions/runs/42712437900) passed Linux checks and macOS 26/Xcode 26.2 compilation. Source: `580e3d6d4249cbb7f5c59b8feb2d1981964d862f`. All 19 local Node tests and browser flow checks passed. The browser's native hardware methods were mocked; camera/NFC operation is not physically verified yet.
+
+Artifact `TURC-unsigned-4` contains version 0.2.0/build 4 and the NFC entitlement reference. Local file: `D:\Run Club\turc-ios\artifacts\build-4\TURC-unsigned.ipa`, 566,805 bytes. ZIP integrity, arm64 executable, version, bundle identifier, camera/NFC usage descriptions, entitlement reference, and bundled source metadata were verified. SHA-256: `314ad207978e8aa1f599e4004023561be5901c5d255fec668d2f904326bb0a8d`.
+
+The hosted cleanup check found zero badges, courses, sessions, attempts, and laps after the rolled-back regressions. An Admin must configure the measured course and issue real fictional-runner badges through the app. No existing roster rows, accounts, website deployment, or paid-service settings were changed. Cloud artifact expires November 12; the local copy remains available.
