@@ -47,11 +47,20 @@ enum TURCBadgePDF {
         text("ID " + (fields["student_number"] ?? ""),x:x+14,y:y+117,width:153,height:12,size:9)
         guard let filter = CIFilter(name: "CIQRCodeGenerator") else { throw NSError(domain:"TURCBadge",code:3) }
         filter.setValue(Data(token.utf8),forKey:"inputMessage"); filter.setValue("M",forKey:"inputCorrectionLevel")
-        guard let code = filter.outputImage, let image = CIContext().createCGImage(code,from:code.extent) else { throw NSError(domain:"TURCBadge",code:4) }
+        guard let code = filter.outputImage else { throw NSError(domain:"TURCBadge",code:4) }
         let qrX = x+(badgeSize.width-106)/2
         context.setFillColor(CGColor(gray:1,alpha:1)); context.fill(rect(qrX,y+132,106,106))
-        context.interpolationQuality = .none
-        context.draw(image,in:rect(qrX+12,y+144,82,82))
+        // Emit vector modules so the printed QR remains sharp at any printer resolution.
+        let width=Int(code.extent.width),height=Int(code.extent.height)
+        var pixels=[UInt8](repeating:0,count:width*height*4)
+        pixels.withUnsafeMutableBytes { buffer in
+            CIContext().render(code,toBitmap:buffer.baseAddress!,rowBytes:width*4,bounds:code.extent,format:.RGBA8,colorSpace:CGColorSpaceCreateDeviceRGB())
+        }
+        let module=82/CGFloat(width),area=rect(qrX+12,y+144,82,82)
+        context.setFillColor(CGColor(gray:0,alpha:1))
+        for row in 0..<height { for column in 0..<width where pixels[(row*width+column)*4]<128 {
+            context.fill(CGRect(x:area.minX+CGFloat(column)*module,y:area.minY+CGFloat(row)*module,width:module,height:module))
+        } }
         text("EVERY RUNNER BELONGS",x:x+27,y:y+242,width:145,height:10,size:7,color:green)
         context.setStrokeColor(CGColor(gray:0.4,alpha:1));context.setLineWidth(0.5)
         for corner in [(x,y),(x+badgeSize.width,y),(x,y+badgeSize.height),(x+badgeSize.width,y+badgeSize.height)] {
