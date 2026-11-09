@@ -6,7 +6,7 @@ const allowed = context => context?.school && context?.year && ['admin','staff']
 
 export function createScanning(plugin,isNative) {
   let client, getContext, changed, course=null, latest=null, badge=null, runID=null, queue=[], processing=false, pending=null;
-  let generation=0, count=0, error='', settingsOpen=false, opening=false;
+  let generation=0, count=0, error='', settingsOpen=false, opening=false, badgeSequence=0;
   let confirmed=new Set();
   const contextKey = c => `${c?.user?.id}/${c?.school?.id}/${c?.year?.id}/${c?.role}`;
   const validContext = key => key===contextKey(getContext()) && allowed(getContext());
@@ -66,12 +66,13 @@ export function createScanning(plugin,isNative) {
     catch(e) { if(validContext(key))error=e.message; }
   }
   async function showBadge(id,replace=false) {
+    const sequence=++badgeSequence;
     const c=getContext(),key=contextKey(c),student=c.students.find(s=>s.id===id);
     if(c.role!=='admin'||!student) throw Error('Admin access required.');
     const request=crypto.randomUUID();
     const result=await rpc('turc_runner_badge',{p_student:id,p_replace:replace,p_request:request});
-    if(!validContext(key))return;
-    const image=await plugin.qrImage({token:result.token}); if(!validContext(key))return;
+    if(!validContext(key)||sequence!==badgeSequence)return;
+    const image=await plugin.qrImage({token:result.token}); if(!validContext(key)||sequence!==badgeSequence)return;
     badge={...result,context:key};
     const dialog=document.getElementById('club-dialog');
     dialog.innerHTML=`<h2>${esc(student.first_name+' '+student.last_name)}</h2><p>QR and NFC use the same badge credential. Student details are not stored on the sticker.</p><img class="badge-qr" src="${image.dataURL}" alt="TURC runner QR badge"><p id="badge-status" class="club-note">${result.nfc_verified?'NFC write/read previously verified.':'QR is ready. NFC sticker has not been paired.'}</p><div class="club-actions">${button('Write / verify NFC sticker','badge-write')}${button('Share QR image','badge-share')}${button('Replace lost badge…','badge-replace',id)}${button('Close','close')}</div><p class="club-note">NFC writing replaces the presented sticker’s NDEF contents. Use an intended TURC sticker. Replacement disables both the old QR and NFC credential.</p>`;
@@ -84,19 +85,22 @@ export function createScanning(plugin,isNative) {
         plugin.addListener('closed',event=>{if(runID===event.runID)runID=null;});
       }
     }, panel,loadCourse,
-    reset() {generation++;queue=[];pending=null;badge=null;course=null;latest=null;count=0;confirmed=new Set();error='';settingsOpen=false;runID=null;if(isNative)plugin.close().catch(()=>{});},
+    clearBadge() {badgeSequence++;badge=null;},
+    reset() {generation++;badgeSequence++;queue=[];pending=null;badge=null;course=null;latest=null;count=0;confirmed=new Set();error='';settingsOpen=false;runID=null;if(isNative)plugin.close().catch(()=>{});},
     handles(name) {return ['scan-qr','scan-nfc','scan-settings','scan-retry','scan-discard','badge','badge-replace','badge-replace-confirm','badge-write','badge-share'].includes(name);},
     async handle(name,id) {
       const c=getContext(); if(!allowed(c)) throw Error('School scanning access required.');
-      if(name==='scan-settings'){settingsOpen=!settingsOpen;changed();return;}
+      if(name==='scan-settings'){settingsOpen=!settingsOpen;changed(true);return;}
       if(name==='scan-retry'){if(pending){queue.push(pending);pending=null;await drain();changed();}return;}
       if(name==='scan-discard'){pending=null;error='Retry discarded. A server-committed lap remains recorded; refresh totals before rescanning.';changed();return;}
       if(name==='scan-qr'||name==='scan-nfc') {
         if(opening)return;
         if(!isNative||pending)throw Error('Resolve the pending scan first.');
         opening=true;
-        try{await loadCourse(); if(!course?.configured)throw Error('Ask an Admin to configure the course.');
+        const key=contextKey(c);
+        try{await loadCourse(); if(!validContext(key))return; if(!course?.configured)throw Error('Ask an Admin to configure the course.');
           runID=crypto.randomUUID(); await plugin.open({runID,school:c.school.name,mode:name==='scan-nfc'?'nfc':'qr'});
+          if(!validContext(key))await plugin.close();
         }finally{opening=false;}return;
       }
       if(!isNative)throw Error('Open the installed iPhone app to manage QR and NFC badges.');
@@ -120,7 +124,7 @@ export function createScanning(plugin,isNative) {
       const values=new FormData(form),mm=Math.round(Number(values.get('meters'))*1000),cooldown=Number(values.get('cooldown'));
       if(!Number.isSafeInteger(mm)||mm<1||mm>1000000000||!Number.isInteger(cooldown)||cooldown<0||cooldown>3600)throw Error('Enter a valid distance and whole-second lap interval.');
       const result=await rpc('turc_scan_course',{p_school:c.school.id,p_name:String(values.get('name')),p_distance:mm,p_cooldown:cooldown});
-      if(!validContext(key))return;course=result;settingsOpen=false;error='';changed();
+      if(!validContext(key))return;course=result;settingsOpen=false;error='';changed(true);
     },
     async totals(id) {return rpc('turc_runner_totals',{p_student:id});}
   };

@@ -148,4 +148,3 @@ end;
 $test$;
 select jsonb_array_length(current_setting('turc.test_results')::jsonb) as passed_count,current_setting('turc.test_results')::jsonb as checks;
 rollback;
-

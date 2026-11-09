@@ -116,7 +116,7 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         return UIGraphicsImageRenderer(size: CGSize(width: 640, height: 640)).image { context in
             UIColor.white.setFill(); context.fill(CGRect(x: 0, y: 0, width: 640, height: 640))
             context.cgContext.interpolationQuality = .none
-            UIImage(cgImage: cg).draw(in: CGRect(x: 48, y: 48, width: 544, height: 544))
+            UIImage(cgImage: cg).draw(in: CGRect(x: 64, y: 64, width: 512, height: 512))
         }
     }
     @objc func qrImage(_ call: CAPPluginCall) {

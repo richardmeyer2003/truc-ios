@@ -46,7 +46,7 @@
       ...(platform?.authStorage ? {storage:platform.authStorage} : {}) }
   });
   platform?.attachClient(client).catch(() => message('Automatic reconnect paused. Use Refresh to update your roster.'));
-  window.TURC_SCANNER?.configure(client,()=>s,()=>{ if(s.tab==='scanner'&&canRefresh())renderQuietly(); });
+  window.TURC_SCANNER?.configure(client,()=>s,(force=false)=>{ if(s.tab==='scanner'&&(force||canRefresh()))renderQuietly(); });
   async function rows(queryFactory) {
     let result = [], start = 0;
     while (true) {
@@ -222,6 +222,7 @@
     return `<section class="panel club-panel"><h2>${esc(s.account.display_name)}</h2><dl class="club-detail"><div><dt>Email</dt><dd>${esc(s.user.email)}</dd></div><div><dt>Role</dt><dd>${esc(s.role)}</dd></div><div><dt>School</dt><dd>${esc(s.school.name)}</dd></div><div><dt>School timezone</dt><dd>${esc(s.school.timezone)}</dd></div></dl><p>Access is assigned by your administrator and checked by the shared database. A school or role cannot be claimed by changing this page.</p><div class="notice">This is a proof of concept. Only upload fictional student information.</div>${action('Sign out of this device','signout','outline')}</section>`;
   }
   async function runnerDetail(id) {
+    window.TURC_SCANNER?.clearBadge();
     const x = s.students.find(r => r.id === id); if (!x) return;
     const token=epoch;
     dialog.innerHTML = `<h2>${esc(x.first_name+' '+x.last_name)}</h2><dl class="club-detail"><div><dt>Student ID</dt><dd>${esc(x.external_student_id)}</dd></div><div><dt>School year</dt><dd>${esc(s.year?.label || 'Not set')}</dd></div><div><dt>Grade</dt><dd>${esc(x.enrollment?.grade || 'Not set')}</dd></div><div><dt>Classroom</dt><dd>${esc(x.enrollment?.classroom || 'Not set')}</dd></div></dl><p id="runner-totals">Loading saved lap totals…</p><div class="modal-actions">${s.role === 'admin' && s.year ? action('Edit runner','edit','',`data-id="${esc(id)}"`)+action('QR / NFC badge','badge','outline',`data-id="${esc(id)}"`) : ''}${action('Close','close','outline')}</div>`;
@@ -275,7 +276,7 @@
       return;
     }
     if (name === 'refresh') { await refresh(); return; }
-    if (name === 'close') { dialog.close(); dialog.innerHTML = ''; return; }
+    if (name === 'close') { window.TURC_SCANNER?.clearBadge(); dialog.close(); dialog.innerHTML = ''; return; }
     if (name === 'tab') { s.tab = target.dataset.tab; s.error = ''; if(s.tab==='scanner')await window.TURC_SCANNER?.loadCourse(); render(); window.scrollTo(0,0); return; }
     if (name === 'open-import' || name === 'open-roster') { s.tab = name === 'open-import' ? 'import' : 'roster'; s.error = ''; render(); window.scrollTo(0,0); return; }
     if (name === 'reset-import') { resetImport(); s.error = ''; render(); return; }
