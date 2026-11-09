@@ -1,5 +1,7 @@
 # Native scanning milestone — November 9, 2026
 
+**Superseded pairing flow:** see [read-only UID badges](uid-badge-checkpoint.md) for version 0.3.0. Tag writing below describes the abandoned version 0.2.0 design.
+
 The owner confirmed that build 2 installed and their existing TURC account signed in successfully. Version 0.2.0 now adds native AVFoundation camera QR scanning and Core NFC NDEF scanning/writing for NTAG215 stickers, backed by the same Supabase roster.
 
 ## Delivered source

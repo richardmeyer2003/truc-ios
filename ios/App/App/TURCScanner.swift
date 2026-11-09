@@ -18,12 +18,12 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "open", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "close", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "feedback", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "writeBadge", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "readTagUID", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "qrImage", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "shareQR", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "shareBadgePDF", returnType: CAPPluginReturnPromise)
     ]
     private var scanner: TURCQRController?
-    private var nfc: TURCNFC?
+    private var nfc: TURCUIDReader?
     private var runID: String?
     private var recent: [String: Date] = [:]
     private var backgroundObserver: NSObjectProtocol?
@@ -34,7 +34,7 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     deinit { if let observer = backgroundObserver { NotificationCenter.default.removeObserver(observer) } }
 
     @objc func capabilities(_ call: CAPPluginCall) {
-        call.resolve(["camera": UIImagePickerController.isSourceTypeAvailable(.camera), "nfc": NFCNDEFReaderSession.readingAvailable])
+        call.resolve(["camera": UIImagePickerController.isSourceTypeAvailable(.camera), "nfc": NFCTagReaderSession.readingAvailable])
     }
     @objc func open(_ call: CAPPluginCall) {
         DispatchQueue.main.async { [weak self] in
@@ -53,7 +53,8 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     }
     private func emit(_ value: String, source: String) {
         guard let id = runID else { return }
-        guard validBadge(value) else { scanner?.show("Not a TURC badge", detail: "Use a QR or sticker issued by your school.", success: false); return }
+        let valid = source == "nfc" ? value.range(of: "^[A-F0-9]{14}$", options: .regularExpression) != nil : validBadge(value)
+        guard valid else { scanner?.show("Not a TURC badge", detail: "Use a QR badge or assigned NTAG215 sticker.", success: false); return }
         let now = Date()
         let previous = recent[value]
         recent[value] = now
@@ -64,9 +65,9 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     }
     private func readNFC() {
         guard nfc == nil else { return }
-        guard NFCNDEFReaderSession.readingAvailable else { scanner?.show("NFC unavailable", detail: "Check your signing method's NFC entitlement. QR is available separately.", success: false); return }
+        guard NFCTagReaderSession.readingAvailable else { scanner?.show("NFC unavailable", detail: "Check your signing method's NFC entitlement. QR is available separately.", success: false); return }
         scanner?.pauseCamera()
-        let reader = TURCNFC()
+        let reader = TURCUIDReader()
         nfc = reader
         reader.onRead = { [weak self] value in self?.emit(value, source: "nfc") }
         reader.onFinish = { [weak self] error in
@@ -94,18 +95,20 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
             call.resolve()
         }
     }
-    @objc func writeBadge(_ call: CAPPluginCall) {
-        guard let token = call.getString("token"), validBadge(token) else { call.reject("Invalid badge credential"); return }
+    @objc func readTagUID(_ call: CAPPluginCall) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self, self.nfc == nil, self.scanner == nil else { call.reject("Close the scanner before pairing a sticker"); return }
-            guard NFCNDEFReaderSession.readingAvailable else { call.reject("NFC is unavailable. Your signed app needs the NFC Tag Reading entitlement."); return }
-            let writer = TURCNFC(); self.nfc = writer
-            writer.writeToken = token
-            writer.onFinish = { [weak self] error in
+            guard NFCTagReaderSession.readingAvailable else { call.reject("NFC is unavailable. Your signed app needs the NFC Tag Reading entitlement."); return }
+            let reader = TURCUIDReader(); self.nfc = reader; reader.singleRead = true
+            var scannedUID: String?
+            reader.onRead = { uid in scannedUID = uid }
+            reader.onFinish = { [weak self] error in
                 self?.nfc = nil
-                if let error = error { call.reject(error, "NFC_WRITE") } else { call.resolve(["verified": true]) }
+                if let error = error { call.reject(error, "NFC_UID") }
+                else if let uid = scannedUID { call.resolve(["uid": uid, "tagType": "NTAG215"]) }
+                else { call.reject("No sticker UID was read") }
             }
-            writer.begin()
+            reader.begin()
         }
     }
     private func image(_ token: String) -> UIImage? {
@@ -123,78 +126,28 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         guard let data = image(call.getString("token") ?? "")?.pngData() else { call.reject("QR image could not be created"); return }
         call.resolve(["dataURL": "data:image/png;base64," + data.base64EncodedString()])
     }
-    @objc func shareQR(_ call: CAPPluginCall) {
+    @objc func shareBadgePDF(_ call: CAPPluginCall) {
         DispatchQueue.main.async { [weak self] in
-            guard let self = self, let image = self.image(call.getString("token") ?? ""), let parent = self.bridge?.viewController, parent.presentedViewController == nil else { call.reject("Close the open sheet first"); return }
-            let sheet = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+            guard let self = self, let parent = self.bridge?.viewController, parent.presentedViewController == nil else { call.reject("Close the open sheet first"); return }
+            let keys = ["token","student_name","student_number","school_name","grade","classroom"]
+            let fields = Dictionary(uniqueKeysWithValues: keys.map { ($0,call.getString($0) ?? "") })
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("turc-badge-" + UUID().uuidString,isDirectory:true)
+            let file = directory.appendingPathComponent("TURC-runner-badge.pdf")
+            do {
+                let data = try TURCBadgePDF.make(fields)
+                try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
+                try data.write(to:file,options:[.atomic,.completeFileProtection])
+            } catch { try? FileManager.default.removeItem(at:directory);call.reject("Printable badge could not be created");return }
+            let sheet = UIActivityViewController(activityItems: [file], applicationActivities: nil)
             sheet.popoverPresentationController?.sourceView = parent.view
             sheet.popoverPresentationController?.sourceRect = CGRect(x: parent.view.bounds.midX, y: parent.view.bounds.midY, width: 1, height: 1)
-            parent.present(sheet, animated: true); call.resolve()
-        }
-    }
-}
-
-private final class TURCNFC: NSObject, NFCNDEFReaderSessionDelegate {
-    var writeToken: String?
-    var onRead: ((String) -> Void)?
-    var onFinish: ((String?) -> Void)?
-    private var session: NFCNDEFReaderSession?
-    private var finished = false
-    private var writing = false
-    func begin() {
-        let reader = NFCNDEFReaderSession(delegate: self, queue: .main, invalidateAfterFirstRead: false)
-        session = reader
-        reader.alertMessage = writeToken == nil ? "Hold a TURC sticker near the top of your iPhone. You can scan several stickers during this session." : "Hold the intended NTAG215 sticker near the top of your iPhone. Keep it still to write and verify."
-        reader.begin()
-    }
-    func message(_ text: String) { session?.alertMessage = text }
-    func cancel() { session?.invalidate(); finish("NFC session closed. Tap NFC to start again.") }
-    private func finish(_ error: String?) {
-        guard !finished else { return }; finished = true
-        let completion = onFinish; session = nil
-        DispatchQueue.main.async { completion?(error) }
-    }
-    func readerSession(_ session: NFCNDEFReaderSession, didInvalidateWithError error: Error) {
-        guard !finished else { return }
-        let nfcError = error as? NFCReaderError
-        if nfcError?.code == .readerSessionInvalidationErrorUserCanceled { finish(nil) }
-        else { finish("NFC session ended. Tap NFC to restart. If it cannot start, check the signing entitlement. " + error.localizedDescription) }
-    }
-    func readerSession(_ session: NFCNDEFReaderSession, didDetectNDEFs messages: [NFCNDEFMessage]) {}
-    func readerSession(_ session: NFCNDEFReaderSession, didDetect tags: [NFCNDEFTag]) {
-        guard !finished, !writing else { return }
-        guard tags.count == 1, let tag = tags.first else { session.alertMessage = "Present one sticker at a time."; session.restartPolling(); return }
-        writing = true
-        session.connect(to: tag) { [weak self] error in
-            guard let self = self, !self.finished else { return }
-            if let error = error { self.fail(session, error.localizedDescription); return }
-            if let token = self.writeToken {
-                tag.queryNDEFStatus { status, capacity, error in
-                    guard !self.finished else { return }
-                    guard error == nil, status == .readWrite, let payload = NFCNDEFPayload.wellKnownTypeTextPayload(string: token, locale: Locale(identifier: "en")) else { self.fail(session, "Sticker is read-only or does not support NDEF writing."); return }
-                    let message = NFCNDEFMessage(records: [payload])
-                    guard message.length <= capacity else { self.fail(session, "Sticker does not have enough capacity."); return }
-                    tag.writeNDEF(message) { error in
-                        if let error = error { self.fail(session, error.localizedDescription); return }
-                        tag.readNDEF { read, error in
-                            guard error == nil, read?.records.contains(where: { $0.wellKnownTypeTextPayload().0 == token }) == true else { self.fail(session, "Write could not be verified. Keep the sticker still and try again."); return }
-                            session.alertMessage = "TURC sticker written and verified."; session.invalidate(); self.finish(nil)
-                        }
-                    }
-                }
-            } else {
-                tag.readNDEF { message, error in
-                    guard !self.finished else { return }
-                    if let value = message?.records.compactMap({ $0.wellKnownTypeTextPayload().0 }).first(where: validBadge), error == nil {
-                        DispatchQueue.main.async { self.onRead?(value) }
-                    } else { session.alertMessage = "This sticker has no TURC credential. Ask an Admin to pair it." }
-                    self.writing = false
-                    session.restartPolling()
-                }
+            sheet.completionWithItemsHandler = { _,_,_,error in
+                try? FileManager.default.removeItem(at:directory)
+                if error != nil { call.reject("Printable badge could not be shared") } else { call.resolve() }
             }
+            parent.present(sheet, animated: true)
         }
     }
-    private func fail(_ session: NFCNDEFReaderSession, _ error: String) { session.invalidate(errorMessage: error); finish(error) }
 }
 
 private final class TURCQRController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {

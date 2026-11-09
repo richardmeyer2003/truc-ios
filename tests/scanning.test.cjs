@@ -1,12 +1,21 @@
 const test=require('node:test');const assert=require('node:assert/strict');
 const badge='turc:v1:'+'a'.repeat(64);
-test('QR and NFC normalize to the same credential and retain event identity for retry',async()=>{
+test('QR tokens and NFC factory UIDs retain their source-specific identity for retry',async()=>{
   const {scanPayload}=await import('../src/scan-contract.mjs');
   const event={value:badge,source:'qr',eventID:'11111111-1111-4111-8111-111111111111',observedAt:'2026-11-09T22:00:00Z'};
   const first=scanPayload(event,'school','device');
   assert.deepEqual(scanPayload(event,'school','device'),first);
-  assert.equal(scanPayload({...event,source:'nfc'},'school','device').p_token,first.p_token);
+  assert.equal(scanPayload({...event,source:'nfc',value:'04aabbccddeeff'},'school','device').p_token,'04AABBCCDDEEFF');
+  assert.throws(()=>scanPayload({...event,source:'nfc'},'school','device'));
+  assert.throws(()=>scanPayload({...event,value:'04AABBCCDDEEFF'},'school','device'));
   for(const value of ['https://example.com','000123','turc:v1:bad','<script>'])assert.throws(()=>scanPayload({...event,value},'school','device'));
+});
+
+test('native NFC implementation contains UID reads and no tag write operation',()=>{
+  const fs=require('node:fs');const path=require('node:path');
+  const source=['TURCScanner.swift','TURCUIDReader.swift'].map(f=>fs.readFileSync(path.join(__dirname,'../ios/App/App',f),'utf8')).join('\n');
+  assert.match(source,/mifare\.identifier/);assert.match(source,/Data\(\[0x60\]\)/);
+  assert.doesNotMatch(source,/writeNDEF|writeBadge|NFCNDEFReaderSession|writeToken/);
 });
 test('feedback distinguishes accepted laps from cooldown and never claims rejection counted',async()=>{
   const {scanFeedback}=await import('../src/scan-contract.mjs');

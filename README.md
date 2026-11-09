@@ -1,6 +1,6 @@
 # TURC for iPhone
 
-TURC 0.2.0 adds native camera QR scanning, NTAG215 NDEF read/write, shared badge credentials, and online lap recording to the connected Liquid Glass clubhouse. It uses the existing Supabase accounts, roster, and server authorization. Website deployment and native releases are separate; this repository does not publish or modify the existing Site.
+TURC 0.3.0 uses read-only NTAG215 factory UID assignment, printable student badges with QR codes, native camera/NFC scanning, and shared online lap records. It preserves the connected Liquid Glass clubhouse and existing Supabase accounts/roster. The app never writes to NFC tags.
 
 Develop on Windows. GitHub-hosted macOS compiles the iPhone app. The workflow produces an **unsigned IPA** for the owner's existing signing/sideloading process. No Apple developer credentials, Mac computer, TestFlight, or paid build service are required to prepare the build.
 
@@ -41,14 +41,14 @@ Preview at `http://127.0.0.1:4173`. Browser preview stores its own browser sessi
 ## Scanning setup
 
 1. As an Admin, open **Scan → Course settings**. Enter the measured lap length in meters and minimum lap interval; no default distance is invented.
-2. Open **Runners → View → QR / NFC badge**. A new credential is issued if the runner has none; reopening shows the same badge.
-3. Share/print the QR image with its white quiet zone intact. The QR image is not a calibrated six-up badge-insert PDF.
-4. For a sticker, choose **Write / verify NFC sticker** and hold the intended NTAG215 near the top of the phone. Writing replaces that sticker's NDEF content. Pairing is marked only after a successful write and read-back.
+2. Select the student under **Runners → View → QR / NFC badge**.
+3. Choose **Scan NTAG215 UID** and present that student's sticker. The app reads its factory UID and assigns it to the student in Supabase. An already-assigned UID is rejected for another student; no tag memory is changed.
+4. Choose **Generate printable badge**. Share/save/print the PDF with student name, school, grade/classroom, Student ID, and linked QR. It has a 2.52 × 3.54 inch insert with cut guides centered on US Letter; print at 100% / Actual Size and check physical fit. Reopening an existing assignment preserves its QR. Batch multi-badge sheets are later work.
 5. Admin or Staff: open **Scan**, then **Open QR camera** or **Scan NFC stickers**. QR stays open; NFC uses Apple's time-limited reader sheet and can be restarted. The two adapters intentionally pause the camera during an NFC sheet.
 
-NFC requires your signing method to preserve/provision `com.apple.developer.nfc.readersession.formats = [NDEF]`. The build artifact includes `TURC-required.entitlements` as a reference. An unsigned app cannot grant capabilities that its eventual signature/provisioning does not support. Camera QR scanning works independently of NFC.
+UID reading requires your signing method to preserve/provision `com.apple.developer.nfc.readersession.formats = [TAG]`. The build artifact includes `TURC-required.entitlements` as a reference. An unsigned app cannot grant capabilities that its eventual signature/provisioning does not support. Camera QR scanning works independently after a badge has been assigned.
 
-Accepted laps are saved centrally with captured course distance, school-local date, active year, operator, and badge history. Duplicate network retries return their original result; a server-side student lock protects the cooldown across devices. First accepted lap creates the day's session. Runner details show today/year/lifetime totals. Replacing a lost badge revokes the old QR and NFC credential without changing previous laps.
+Accepted laps are saved centrally with captured course distance, school-local date, active year, operator, and badge history. The NFC UID and printed QR resolve to the same saved student assignment. Duplicate retries return their original result; a student lock protects the cooldown across devices. Replacing a sticker retires its old UID and QR without changing historical laps.
 
 This milestone requires an online result. If a response is lost, the app retains the same event in memory for **Retry last scan** rather than claiming success. Force-closing loses that retry; a server-committed lap remains saved. Durable offline queues, corrections, schedule warnings, milestones, and calibrated badge sheets remain later work. Physical camera and NFC behavior must be checked on the actual phone.
 

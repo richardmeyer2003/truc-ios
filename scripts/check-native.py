@@ -16,7 +16,10 @@ project = (root / 'ios/App/App.xcodeproj/project.pbxproj').read_text()
 assert 'TURCNative.swift in Sources' in project
 assert 'TURCScanner.swift in Sources' in project
 assert info['NSCameraUsageDescription'] and info['NFCReaderUsageDescription']
-assert plistlib.loads((native / 'TURC.entitlements').read_bytes())['com.apple.developer.nfc.readersession.formats'] == ['NDEF']
+assert plistlib.loads((native / 'TURC.entitlements').read_bytes())['com.apple.developer.nfc.readersession.formats'] == ['TAG']
+assert 'TURCUIDReader.swift in Sources' in project and 'TURCBadgePDF.swift in Sources' in project
+scanner_source=(native/'TURCScanner.swift').read_text()+(native/'TURCUIDReader.swift').read_text()
+assert 'writeNDEF' not in scanner_source and 'writeBadge' not in scanner_source and 'NFCNDEFReaderSession' not in scanner_source
 assert 'TURCViewController()' in (native / 'SceneDelegate.swift').read_text()
 tree = ET.parse(native / 'Base.lproj/Main.storyboard')
 assert tree.find('.//viewController').attrib['customClass'] == 'TURCViewController'

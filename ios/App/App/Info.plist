@@ -27,7 +27,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>TURC uses the camera to scan runner QR badges and record laps.</string>
 	<key>NFCReaderUsageDescription</key>
-	<string>TURC reads runner NFC stickers and writes badge credentials to your NTAG215 stickers.</string>
+	<string>TURC reads NTAG215 factory UIDs to assign stickers to runners and record laps.</string>
 	<key>UIUserInterfaceStyle</key>
 	<string>Light</string>
 	<key>UIApplicationSceneManifest</key>

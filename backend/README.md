@@ -1,5 +1,7 @@
 # Shared hosted backend
 
+Current badge workflow is read-only UID assignment, added by `20261109224925_turc_uid_badge_assignment.sql`. QR credentials are issued only after an Admin assigns an NTAG215 UID to a student. The former QR-first/NDEF-confirmation endpoints are retired. See `docs/uid-badge-checkpoint.md` in the repository root.
+
 These are copies of the canonical applied migrations from `D:\Run Club\backend\supabase\migrations` for reproducibility. They are **already applied** to project `gafdrcjkcwazfeebmhgd`. No database password or service-role credential belongs in this repository or the app.
 
 `20261109221649_turc_native_scanning.sql` adds private course, badge, session, and attempt storage; the RLS-protected lap table; and authenticated RPCs. Public functions are invoker wrappers around private, live-authorized implementations. Credentials never authorize access to student information by themselves. Staff cannot issue badges or configure courses. Parents cannot submit scans; they can read only linked-child totals.

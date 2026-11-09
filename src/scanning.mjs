@@ -1,4 +1,4 @@
-import { scanPayload, scanFeedback, miles } from './scan-contract.mjs';
+import { scanPayload, scanFeedback, miles, uidPattern } from './scan-contract.mjs';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const button = (text,action,id='') => `<button type="button" class="btn" data-action="${action}" data-id="${esc(id)}">${text}</button>`;
@@ -6,7 +6,7 @@ const allowed = context => context?.school && context?.year && ['admin','staff']
 
 export function createScanning(plugin,isNative) {
   let client, getContext, changed, course=null, latest=null, badge=null, runID=null, queue=[], processing=false, pending=null;
-  let generation=0, count=0, error='', settingsOpen=false, opening=false, badgeSequence=0;
+  let generation=0, count=0, error='', settingsOpen=false, opening=false, badgeSequence=0, pairing=false;
   let confirmed=new Set();
   const contextKey = c => `${c?.user?.id}/${c?.school?.id}/${c?.year?.id}/${c?.role}`;
   const validContext = key => key===contextKey(getContext()) && allowed(getContext());
@@ -69,13 +69,12 @@ export function createScanning(plugin,isNative) {
     const sequence=++badgeSequence;
     const c=getContext(),key=contextKey(c),student=c.students.find(s=>s.id===id);
     if(c.role!=='admin'||!student) throw Error('Admin access required.');
-    const request=crypto.randomUUID();
-    const result=await rpc('turc_runner_badge',{p_student:id,p_replace:replace,p_request:request});
+    const result=replace?null:await rpc('turc_badge_assignment',{p_student:id});
     if(!validContext(key)||sequence!==badgeSequence)return;
-    const image=await plugin.qrImage({token:result.token}); if(!validContext(key)||sequence!==badgeSequence)return;
-    badge={...result,context:key};
+    const image=result?await plugin.qrImage({token:result.token}):null; if(!validContext(key)||sequence!==badgeSequence)return;
+    badge=result?{...result,context:key}:null;
     const dialog=document.getElementById('club-dialog');
-    dialog.innerHTML=`<h2>${esc(student.first_name+' '+student.last_name)}</h2><p>QR and NFC use the same badge credential. Student details are not stored on the sticker.</p><img class="badge-qr" src="${image.dataURL}" alt="TURC runner QR badge"><p id="badge-status" class="club-note">${result.nfc_verified?'NFC write/read previously verified.':'QR is ready. NFC sticker has not been paired.'}</p><div class="club-actions">${button('Write / verify NFC sticker','badge-write')}${button('Share QR image','badge-share')}${button('Replace lost badge…','badge-replace',id)}${button('Close','close')}</div><p class="club-note">NFC writing replaces the presented sticker’s NDEF contents. Use an intended TURC sticker. Replacement disables both the old QR and NFC credential.</p>`;
+    dialog.innerHTML=`<h2>${esc(student.first_name+' '+student.last_name)}</h2><p>Select student → scan NTAG215 UID → generate printable badge.</p>${result?`<img class="badge-qr" src="${image.dataURL}" alt="TURC runner QR badge"><p id="badge-status" class="club-note">Assigned sticker UID: <b>${esc(result.tag_uid)}</b></p><div class="club-actions">${button('Generate printable badge','badge-print')}${button('Replace sticker…','badge-replace',id)}`:`<p id="badge-status" class="club-note">${replace?'Scan an unassigned replacement sticker. The old assignment stays active until the new UID is saved.':'Scan this student’s NTAG215 sticker to read and assign its factory UID. The QR becomes available after assignment.'}</p><div class="club-actions">${button('Scan NTAG215 UID','badge-scan-uid',id)}`}${button('Close','close')}</div>`;
     if(!dialog.open)dialog.showModal();
   }
   return {
@@ -87,7 +86,7 @@ export function createScanning(plugin,isNative) {
     }, panel,loadCourse,
     clearBadge() {badgeSequence++;badge=null;},
     reset() {generation++;badgeSequence++;queue=[];pending=null;badge=null;course=null;latest=null;count=0;confirmed=new Set();error='';settingsOpen=false;runID=null;if(isNative)plugin.close().catch(()=>{});},
-    handles(name) {return ['scan-qr','scan-nfc','scan-settings','scan-retry','scan-discard','badge','badge-replace','badge-replace-confirm','badge-write','badge-share'].includes(name);},
+    handles(name) {return ['scan-qr','scan-nfc','scan-settings','scan-retry','scan-discard','badge','badge-replace','badge-replace-confirm','badge-scan-uid','badge-print'].includes(name);},
     async handle(name,id) {
       const c=getContext(); if(!allowed(c)) throw Error('School scanning access required.');
       if(name==='scan-settings'){settingsOpen=!settingsOpen;changed(true);return;}
@@ -106,18 +105,21 @@ export function createScanning(plugin,isNative) {
       if(!isNative)throw Error('Open the installed iPhone app to manage QR and NFC badges.');
       if(name==='badge')return showBadge(id);
       if(name==='badge-replace'){
-        const dialog=document.getElementById('club-dialog');dialog.innerHTML=`<h2>Replace this badge?</h2><p>The runner’s existing QR and NFC sticker will stop working. Their lap history stays intact. A replacement sticker must be written again.</p><div class="club-actions">${button('Replace badge','badge-replace-confirm',id)}${button('Cancel','badge',id)}</div>`;return;
+        const dialog=document.getElementById('club-dialog');dialog.innerHTML=`<h2>Replace this sticker?</h2><p>After you scan and assign a new sticker UID, the previous sticker and printed QR will stop working. Lap history stays intact. Print the updated badge after assignment.</p><div class="club-actions">${button('Scan replacement sticker','badge-replace-confirm',id)}${button('Cancel','badge',id)}</div>`;return;
       }
       if(name==='badge-replace-confirm')return showBadge(id,true);
-      if(!badge||badge.context!==contextKey(c)||c.role!=='admin')throw Error('Reopen the runner badge.');
-      if(name==='badge-share'){await plugin.shareQR({token:badge.token});return;}
-      if(name==='badge-write'){
-        const b=badge;const status=document.getElementById('badge-status');status.textContent='Hold the intended NTAG215 sticker near the top of your iPhone. Keep it still.';
-        const result=await plugin.writeBadge({token:b.token});if(!validContext(b.context)||badge!==b)return;
-        if(!result.verified)throw Error('The NFC write could not be verified.');
-        await rpc('turc_confirm_nfc',{p_badge:b.id});if(!validContext(b.context))return;
-        const node=document.getElementById('badge-status');if(node)node.textContent='NFC sticker written, read back, and paired successfully.';
+      if(name==='badge-scan-uid'){
+        if(pairing)return;if(c.role!=='admin')throw Error('Admin access required.');
+        const key=contextKey(c),sequence=badgeSequence;pairing=true;
+        try{
+          const read=await plugin.readTagUID();if(!validContext(key)||sequence!==badgeSequence)return;
+          const uid=String(read.uid||'').toUpperCase();if(read.tagType!=='NTAG215'||!uidPattern.test(uid))throw Error('A valid NTAG215 UID was not read.');
+          await rpc('turc_assign_tag',{p_student:id,p_uid:uid,p_request:crypto.randomUUID()});
+          if(!validContext(key)||sequence!==badgeSequence)return;await showBadge(id);
+        }finally{pairing=false;}return;
       }
+      if(!badge||badge.context!==contextKey(c)||c.role!=='admin')throw Error('Reopen the runner badge.');
+      if(name==='badge-print'){await plugin.shareBadgePDF({...badge,grade:badge.grade||'',classroom:badge.classroom||''});return;}
     },
     async saveCourse(form) {
       const c=getContext(),key=contextKey(c); if(c.role!=='admin')throw Error('Admin access required.');

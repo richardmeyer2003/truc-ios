@@ -18,6 +18,8 @@
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		7A11C0000000000000000001 /* TURCNative.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A11C0000000000000000002 /* TURCNative.swift */; };
 		7A11C0000000000000000003 /* TURCScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A11C0000000000000000004 /* TURCScanner.swift */; };
+		7A11C0000000000000000005 /* TURCUIDReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A11C0000000000000000006 /* TURCUIDReader.swift */; };
+		7A11C0000000000000000007 /* TURCBadgePDF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A11C0000000000000000008 /* TURCBadgePDF.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -34,6 +36,8 @@
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		7A11C0000000000000000002 /* TURCNative.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TURCNative.swift; sourceTree = "<group>"; };
 		7A11C0000000000000000004 /* TURCScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TURCScanner.swift; sourceTree = "<group>"; };
+		7A11C0000000000000000006 /* TURCUIDReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TURCUIDReader.swift; sourceTree = "<group>"; };
+		7A11C0000000000000000008 /* TURCBadgePDF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TURCBadgePDF.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -72,6 +76,8 @@
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				7A11C0000000000000000002 /* TURCNative.swift */,
+				7A11C0000000000000000008 /* TURCBadgePDF.swift */,
+				7A11C0000000000000000006 /* TURCUIDReader.swift */,
 				7A11C0000000000000000004 /* TURCScanner.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
@@ -166,6 +172,8 @@
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				7A11C0000000000000000001 /* TURCNative.swift in Sources */,
+				7A11C0000000000000000007 /* TURCBadgePDF.swift in Sources */,
+				7A11C0000000000000000005 /* TURCUIDReader.swift in Sources */,
 				7A11C0000000000000000003 /* TURCScanner.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 			);
@@ -316,7 +324,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.3.0;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = org.turc.clubhouse;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -339,7 +347,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.turc.clubhouse;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";

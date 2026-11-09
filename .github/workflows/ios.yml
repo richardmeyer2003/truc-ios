@@ -56,6 +56,10 @@ jobs:
       - run: pnpm exec cap sync ios
       - name: Build device app and package unsigned IPA
         run: bash scripts/build-unsigned-ipa.sh
+      - name: Render and verify printable badge
+        run: |
+          swiftc ios/App/App/TURCBadgePDF.swift scripts/badge-pdf-preview.swift -o build/badge-pdf-preview
+          build/badge-pdf-preview artifacts
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
@@ -66,6 +70,9 @@ jobs:
             artifacts/build-info.json
             artifacts/README.txt
             artifacts/TURC-required.entitlements
+            artifacts/TURC-fictional-badge-preview.pdf
+            artifacts/TURC-fictional-badge-preview.png
+            artifacts/TURC-fictional-badge-detail.png
           retention-days: 3
           if-no-files-found: error
       - name: Upload build diagnostics on failure

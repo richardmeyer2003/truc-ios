@@ -1,8 +1,10 @@
 export const credentialPattern = /^turc:v1:[a-f0-9]{64}$/;
+export const uidPattern = /^[A-F0-9]{14}$/;
 export function scanPayload(event, school, device) {
-  if (!credentialPattern.test(event.value) || !['qr','nfc'].includes(event.source)
+  const value=event.source==='nfc'?String(event.value).toUpperCase():event.value;
+  if (!(event.source==='qr'?credentialPattern.test(value):event.source==='nfc'&&uidPattern.test(value))
     || !/^[a-f0-9-]{36}$/i.test(event.eventID) || !Number.isFinite(Date.parse(event.observedAt))) throw Error('Invalid TURC scan');
-  return {p_school:school,p_token:event.value,p_event:event.eventID,p_device:device,p_source:event.source,p_observed:event.observedAt};
+  return {p_school:school,p_token:value,p_event:event.eventID,p_device:device,p_source:event.source,p_observed:event.observedAt};
 }
 export const miles = mm => (Number(mm || 0)/1609344).toFixed(2);
 export function scanFeedback(result) {
