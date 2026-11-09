@@ -59,7 +59,7 @@ enum TURCBadgePDF {
         let module=82/CGFloat(width),area=rect(qrX+12,y+144,82,82)
         context.setFillColor(CGColor(gray:0,alpha:1))
         for row in 0..<height { for column in 0..<width where pixels[(row*width+column)*4]<128 {
-            context.fill(CGRect(x:area.minX+CGFloat(column)*module,y:area.minY+CGFloat(row)*module,width:module,height:module))
+            context.fill(CGRect(x:area.minX+CGFloat(column)*module,y:area.maxY-CGFloat(row+1)*module,width:module,height:module))
         } }
         text("EVERY RUNNER BELONGS",x:x+27,y:y+242,width:145,height:10,size:7,color:green)
         context.setStrokeColor(CGColor(gray:0.4,alpha:1));context.setLineWidth(0.5)
