@@ -1,6 +1,6 @@
 {
   "name": "turc-ios",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "TURC connected clubhouse for iOS, developed on Windows",
   "packageManager": "pnpm@11.25.0",

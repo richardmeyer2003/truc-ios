@@ -1,6 +1,6 @@
 # TURC for iPhone
 
-TURC 0.1.0 packages the connected Liquid Glass clubhouse from published Site version 7 into a Capacitor iOS app. It uses the existing Supabase accounts, roster, and server authorization. Website deployment and native releases are separate; this repository does not publish or modify the existing Site.
+TURC 0.2.0 adds native camera QR scanning, NTAG215 NDEF read/write, shared badge credentials, and online lap recording to the connected Liquid Glass clubhouse. It uses the existing Supabase accounts, roster, and server authorization. Website deployment and native releases are separate; this repository does not publish or modify the existing Site.
 
 Develop on Windows. GitHub-hosted macOS compiles the iPhone app. The workflow produces an **unsigned IPA** for the owner's existing signing/sideloading process. No Apple developer credentials, Mac computer, TestFlight, or paid build service are required to prepare the build.
 
@@ -38,7 +38,19 @@ Preview at `http://127.0.0.1:4173`. Browser preview stores its own browser sessi
 - Keychain-backed auth tokens, device-only and accessible while unlocked. No native fallback to localStorage on Keychain errors.
 - Bundled assets, restricted content security policy, and existing TURC colors/materials with iPhone safe-area support.
 
-No NFC, camera scanning, badge assignment, lap recording, mileage, or offline scan queue is claimed in this build. These need subsequent backend contracts and physical-device verification. NFC will also depend on what capabilities the owner's signing method can provision. A successful sideload does not prove NFC availability.
+## Scanning setup
+
+1. As an Admin, open **Scan → Course settings**. Enter the measured lap length in meters and minimum lap interval; no default distance is invented.
+2. Open **Runners → View → QR / NFC badge**. A new credential is issued if the runner has none; reopening shows the same badge.
+3. Share/print the QR image with its white quiet zone intact. The QR image is not a calibrated six-up badge-insert PDF.
+4. For a sticker, choose **Write / verify NFC sticker** and hold the intended NTAG215 near the top of the phone. Writing replaces that sticker's NDEF content. Pairing is marked only after a successful write and read-back.
+5. Admin or Staff: open **Scan**, then **Open QR camera** or **Scan NFC stickers**. QR stays open; NFC uses Apple's time-limited reader sheet and can be restarted. The two adapters intentionally pause the camera during an NFC sheet.
+
+NFC requires your signing method to preserve/provision `com.apple.developer.nfc.readersession.formats = [NDEF]`. The build artifact includes `TURC-required.entitlements` as a reference. An unsigned app cannot grant capabilities that its eventual signature/provisioning does not support. Camera QR scanning works independently of NFC.
+
+Accepted laps are saved centrally with captured course distance, school-local date, active year, operator, and badge history. Duplicate network retries return their original result; a server-side student lock protects the cooldown across devices. First accepted lap creates the day's session. Runner details show today/year/lifetime totals. Replacing a lost badge revokes the old QR and NFC credential without changing previous laps.
+
+This milestone requires an online result. If a response is lost, the app retains the same event in memory for **Retry last scan** rather than claiming success. Force-closing loses that retry; a server-committed lap remains saved. Durable offline queues, corrections, schedule warnings, milestones, and calibrated badge sheets remain later work. Physical camera and NFC behavior must be checked on the actual phone.
 
 ## Layout
 
@@ -48,6 +60,7 @@ No NFC, camera scanning, badge assignment, lap recording, mileage, or offline sc
 - `scripts/`: asset build, preview server, native structural checks, unsigned IPA packaging.
 - `tests/`: inherited refresh and CSV regressions plus native storage checks.
 - `docs/`: baseline provenance and device acceptance checklist.
+- `backend/`: the already-applied shared migrations and transactional SQL regressions; do not blindly reapply them to the live project.
 
 App identifier: `org.turc.clubhouse`. The sideloading tool may adjust it; use a consistent signing identity/identifier across installs to preserve Keychain access. Keychain items may survive uninstall. This prototype does not implement app-uninstall account deletion.
 

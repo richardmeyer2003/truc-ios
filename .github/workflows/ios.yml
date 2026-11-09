@@ -65,6 +65,7 @@ jobs:
             artifacts/SHA256SUMS.txt
             artifacts/build-info.json
             artifacts/README.txt
+            artifacts/TURC-required.entitlements
           retention-days: 3
           if-no-files-found: error
       - name: Upload build diagnostics on failure

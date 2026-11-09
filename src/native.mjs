@@ -1,9 +1,11 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { keychainStorage } from './storage.mjs';
+import { createScanning } from './scanning.mjs';
 
 const isNative = Capacitor.isNativePlatform();
 const native = registerPlugin('TURCNative');
+window.TURC_SCANNER = createScanning(registerPlugin('TURCScanner'),isNative);
 window.TURC_PLATFORM = {
   isNative,
   async ready() {

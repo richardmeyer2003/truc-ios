@@ -14,6 +14,9 @@ assert config['appId'] == 'org.turc.clubhouse'
 assert 'server' not in config, 'The app must bundle its frontend'
 project = (root / 'ios/App/App.xcodeproj/project.pbxproj').read_text()
 assert 'TURCNative.swift in Sources' in project
+assert 'TURCScanner.swift in Sources' in project
+assert info['NSCameraUsageDescription'] and info['NFCReaderUsageDescription']
+assert plistlib.loads((native / 'TURC.entitlements').read_bytes())['com.apple.developer.nfc.readersession.formats'] == ['NDEF']
 assert 'TURCViewController()' in (native / 'SceneDelegate.swift').read_text()
 tree = ET.parse(native / 'Base.lproj/Main.storyboard')
 assert tree.find('.//viewController').attrib['customClass'] == 'TURCViewController'

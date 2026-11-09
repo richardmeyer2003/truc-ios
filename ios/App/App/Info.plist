@@ -24,6 +24,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>TURC uses the camera to scan runner QR badges and record laps.</string>
+	<key>NFCReaderUsageDescription</key>
+	<string>TURC reads runner NFC stickers and writes badge credentials to your NTAG215 stickers.</string>
 	<key>UIUserInterfaceStyle</key>
 	<string>Light</string>
 	<key>UIApplicationSceneManifest</key>

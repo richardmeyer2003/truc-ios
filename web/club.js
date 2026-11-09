@@ -26,6 +26,7 @@
   }
   function resetImport() { s.parsed = null; s.mapping = null; s.preview = null; s.importErrors = []; s.fileName = ''; }
   function clearPrivateState() {
+    window.TURC_SCANNER?.reset();
     epoch++; Object.assign(s, { user:null, account:null, memberships:[], schools:[], years:[], students:[], school:null, year:null, role:null,
       tab:'overview', loading:false, error:'', syncError:'', updated:null, search:'', busy:false }); resetImport();
     if (dialog.open) dialog.close(); dialog.innerHTML = '';
@@ -45,6 +46,7 @@
       ...(platform?.authStorage ? {storage:platform.authStorage} : {}) }
   });
   platform?.attachClient(client).catch(() => message('Automatic reconnect paused. Use Refresh to update your roster.'));
+  window.TURC_SCANNER?.configure(client,()=>s,()=>{ if(s.tab==='scanner'&&canRefresh())renderQuietly(); });
   async function rows(queryFactory) {
     let result = [], start = 0;
     while (true) {
@@ -134,6 +136,7 @@
       const role = school ? roleFor(school,memberships,verified.user) : null;
       const scopeChanged = school?.id !== s.school?.id || role !== s.role || !account;
       if (scopeChanged) {
+        window.TURC_SCANNER?.reset();
         resetImport(); s.search = ''; if (dialog.open) dialog.close(); dialog.innerHTML = '';
         Object.assign(s,{user:verified.user,account,memberships,schools,school,role,years:[],year:null,students:[]});
         renderQuietly();
@@ -179,13 +182,14 @@
         ${s.error ? `<div class="club-error" role="alert">${esc(s.error)}</div>` : ''}<div class="club-actions">${action('Check my access','refresh')}${action('Sign out','signout','outline')}</div></section></main>`; return;
     }
     if (s.role !== 'admin' && s.tab === 'import') s.tab = 'roster';
-    const tabs = [['overview',s.role === 'parent' ? 'My club' : 'Overview'],['roster',s.role === 'parent' ? 'My runners' : 'Runners'],...(s.role === 'admin' ? [['import','Import roster']] : []),['account','Account']];
+    if (!['admin','staff'].includes(s.role) && s.tab === 'scanner') s.tab = 'roster';
+    const tabs = [['overview',s.role === 'parent' ? 'My club' : 'Overview'],['roster',s.role === 'parent' ? 'My runners' : 'Runners'],...(['admin','staff'].includes(s.role) ? [['scanner','Scan']] : []),...(s.role === 'admin' ? [['import','Import']] : []),['account','Account']];
     root.innerHTML = `<div class="club-layout"><header class="club-header"><a class="club-brand" href="/">${brand}</a><div class="club-account"><div><b>${esc(s.account.display_name)}</b><small>${s.role === 'admin' ? 'Administrator' : s.role === 'staff' ? 'School staff' : 'Parent / family'}</small></div>${action('Sign out','signout','outline')}</div></header>
       <div class="club-context"><div><div class="eyebrow">EVERY RUNNER BELONGS</div><h1>${s.tab === 'roster' ? (s.role === 'parent' ? 'Your little runners.' : 'A place for every runner.') : s.tab === 'import' ? 'A fresh start, together.' : s.tab === 'account' ? 'Your club. Your account.' : 'Welcome to your club.'}</h1><p>${esc(s.school.name)} · ${s.year ? esc(s.year.label) : 'No active school year'}</p></div>
       <label>School<select id="club-school" aria-label="School">${s.schools.map(x => `<option value="${esc(x.id)}" ${x.id === s.school.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label></div>
       <nav class="club-tabs" aria-label="Club navigation">${tabs.map(([id,label]) => `<button class="club-tab" data-action="tab" data-tab="${id}" ${s.tab === id ? 'aria-current="page"' : ''}>${label}</button>`).join('')}</nav>
-      ${s.error ? `<div class="club-error" role="alert">${esc(s.error)}</div>` : ''}${s.tab === 'overview' ? overview() : s.tab === 'roster' ? roster() : s.tab === 'import' ? importView() : accountView()}
-      <footer class="club-footer"><span>Connected prototype · Fictional students only<br>Scanning and mileage tracking will be connected in the next milestone.</span><span><span id="club-sync" role="status">${esc(syncText())}</span> ${action('Refresh','refresh','outline')}</span></footer></div>`;
+      ${s.error ? `<div class="club-error" role="alert">${esc(s.error)}</div>` : ''}${s.tab === 'overview' ? overview() : s.tab === 'roster' ? roster() : s.tab === 'import' ? importView() : s.tab === 'scanner' ? (window.TURC_SCANNER?.panel() || '') : accountView()}
+      <footer class="club-footer"><span>Connected prototype · Fictional students only<br>Native QR + NFC scanning · Shared school lap records.</span><span><span id="club-sync" role="status">${esc(syncText())}</span> ${action('Refresh','refresh','outline')}</span></footer></div>`;
     if (s.busy) root.querySelectorAll('button,input,select').forEach(el => { el.disabled = true; });
   }
   function overview() {
@@ -217,10 +221,15 @@
   function accountView() {
     return `<section class="panel club-panel"><h2>${esc(s.account.display_name)}</h2><dl class="club-detail"><div><dt>Email</dt><dd>${esc(s.user.email)}</dd></div><div><dt>Role</dt><dd>${esc(s.role)}</dd></div><div><dt>School</dt><dd>${esc(s.school.name)}</dd></div><div><dt>School timezone</dt><dd>${esc(s.school.timezone)}</dd></div></dl><p>Access is assigned by your administrator and checked by the shared database. A school or role cannot be claimed by changing this page.</p><div class="notice">This is a proof of concept. Only upload fictional student information.</div>${action('Sign out of this device','signout','outline')}</section>`;
   }
-  function runnerDetail(id) {
+  async function runnerDetail(id) {
     const x = s.students.find(r => r.id === id); if (!x) return;
-    dialog.innerHTML = `<h2>${esc(x.first_name+' '+x.last_name)}</h2><dl class="club-detail"><div><dt>Student ID</dt><dd>${esc(x.external_student_id)}</dd></div><div><dt>School year</dt><dd>${esc(s.year?.label || 'Not set')}</dd></div><div><dt>Grade</dt><dd>${esc(x.enrollment?.grade || 'Not set')}</dd></div><div><dt>Classroom</dt><dd>${esc(x.enrollment?.classroom || 'Not set')}</dd></div></dl><p>Badge and mileage records will appear after the scanning milestone is connected.</p><div class="modal-actions">${s.role === 'admin' && s.year ? action('Edit runner','edit','',`data-id="${esc(id)}"`) : ''}${action('Close','close','outline')}</div>`;
+    const token=epoch;
+    dialog.innerHTML = `<h2>${esc(x.first_name+' '+x.last_name)}</h2><dl class="club-detail"><div><dt>Student ID</dt><dd>${esc(x.external_student_id)}</dd></div><div><dt>School year</dt><dd>${esc(s.year?.label || 'Not set')}</dd></div><div><dt>Grade</dt><dd>${esc(x.enrollment?.grade || 'Not set')}</dd></div><div><dt>Classroom</dt><dd>${esc(x.enrollment?.classroom || 'Not set')}</dd></div></dl><p id="runner-totals">Loading saved lap totals…</p><div class="modal-actions">${s.role === 'admin' && s.year ? action('Edit runner','edit','',`data-id="${esc(id)}"`)+action('QR / NFC badge','badge','outline',`data-id="${esc(id)}"`) : ''}${action('Close','close','outline')}</div>`;
     dialog.showModal();
+    if(window.TURC_SCANNER) {
+      try { const totals=await window.TURC_SCANNER.totals(id); const node=document.getElementById('runner-totals'); if(token===epoch&&node&&dialog.open)node.textContent=`Today: ${totals.today_laps} laps · ${(totals.today_mm/1609344).toFixed(2)} miles. School year: ${(totals.year_mm/1609344).toFixed(2)} miles. Lifetime at school: ${(totals.lifetime_mm/1609344).toFixed(2)} miles.`; }
+      catch { const node=document.getElementById('runner-totals'); if(token===epoch&&node)node.textContent='Lap totals could not load. Reconnect and reopen this runner.'; }
+    }
   }
   function editRunner(id) {
     if (s.role !== 'admin' || !s.year) { message('An Admin and active school year are required.'); return; }
@@ -247,6 +256,7 @@
   async function handleAction(target) {
     const name = target.dataset.action;
     if (s.busy && !['signout','close'].includes(name)) return;
+    if(window.TURC_SCANNER?.handles(name)){await window.TURC_SCANNER.handle(name,target.dataset.id);return;}
     if (name === 'signout') {
       sessionRemovalPending = true;
       clearPrivateState(); render();
@@ -266,10 +276,10 @@
     }
     if (name === 'refresh') { await refresh(); return; }
     if (name === 'close') { dialog.close(); dialog.innerHTML = ''; return; }
-    if (name === 'tab') { s.tab = target.dataset.tab; s.error = ''; render(); window.scrollTo(0,0); return; }
+    if (name === 'tab') { s.tab = target.dataset.tab; s.error = ''; if(s.tab==='scanner')await window.TURC_SCANNER?.loadCourse(); render(); window.scrollTo(0,0); return; }
     if (name === 'open-import' || name === 'open-roster') { s.tab = name === 'open-import' ? 'import' : 'roster'; s.error = ''; render(); window.scrollTo(0,0); return; }
     if (name === 'reset-import') { resetImport(); s.error = ''; render(); return; }
-    if (name === 'detail') { runnerDetail(target.dataset.id); return; }
+    if (name === 'detail') { await runnerDetail(target.dataset.id); return; }
     if (name === 'add' || name === 'edit') { editRunner(target.dataset.id); return; }
     if (name === 'sample') { await downloadCSV('turc-fictional-roster.csv',[['Student ID','First Name','Last Name','Grade','Classroom'],['000101','Maya','Example','3','Ms. Parker'],['000102','Oliver','Example','4','Mr. Brooks']]); return; }
     if (name === 'export' && s.role === 'admin') { await downloadCSV('turc-roster.csv',[['Student ID','First Name','Last Name','Grade','Classroom','Status'],...s.students.map(x => [x.external_student_id,x.first_name,x.last_name,x.enrollment?.grade || '',x.enrollment?.classroom || '',x.active ? 'Active' : 'Archived'])]); return; }
@@ -284,10 +294,11 @@
       finally { if (requestEpoch === epoch) { s.busy = false; render(); } }
     }
   }
-  document.addEventListener('click',event => { const target = event.target.closest('[data-action]'); if (target) handleAction(target).catch(e => { s.error = errorText(e); s.busy = false; render(); }); });
+  document.addEventListener('click',event => { const target = event.target.closest('[data-action]'); if (target) handleAction(target).catch(e => { s.error = errorText(e); s.busy = false; if(dialog.open){ const node=document.createElement('p');node.className='club-error';node.textContent=s.error;dialog.append(node); } else render(); }); });
   document.addEventListener('input',event => { if (event.target.id === 'club-search') { s.search = event.target.value; const body = document.getElementById('club-roster-body'); if (body) body.innerHTML = rosterRows(); } });
   document.addEventListener('change',async event => {
     if (event.target.id === 'club-school') {
+      window.TURC_SCANNER?.reset();
       const school = s.schools.find(x => x.id === event.target.value); if (!school) return;
       if (dialog.open) dialog.close(); resetImport(); s.school = school; s.search = ''; await activate({user:s.user});
     }
@@ -299,8 +310,9 @@
     }
   });
   document.addEventListener('submit',async event => {
-    const form = event.target; if (!['club-login','club-map','club-edit'].includes(form.id)) return; event.preventDefault();
+    const form = event.target; if (!['club-login','club-map','club-edit','scan-course'].includes(form.id)) return; event.preventDefault();
     try {
+      if(form.id==='scan-course'){await window.TURC_SCANNER.saveCourse(form);return;}
       if (form.id === 'club-login') {
         if (signInPending) return; signInPending = true; const button = form.querySelector('button'); button.disabled = true; button.textContent = 'Signing in…';
         const values = new FormData(form); const {data,error} = await client.auth.signInWithPassword({email:String(values.get('email')).trim(),password:String(values.get('password'))});

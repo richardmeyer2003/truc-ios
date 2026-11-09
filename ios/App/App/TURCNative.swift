@@ -6,6 +6,7 @@ import Capacitor
 final class TURCViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(TURCNativePlugin())
+        bridge?.registerPluginInstance(TURCScannerPlugin())
     }
 }
 
