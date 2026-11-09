@@ -1,0 +1,11 @@
+{
+  "appId": "org.turc.clubhouse",
+  "appName": "TURC",
+  "webDir": "www",
+  "ios": {
+    "backgroundColor": "#e7f0f3",
+    "contentInset": "never",
+    "preferredContentMode": "mobile",
+    "scrollEnabled": true
+  }
+}

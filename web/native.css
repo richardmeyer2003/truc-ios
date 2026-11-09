@@ -1,0 +1,10 @@
+/* Keep the connected site's glass material; fit it around iPhone system UI. */
+html { background:#e7f0f3; -webkit-text-size-adjust:100%; }
+.club-body { padding-top:env(safe-area-inset-top); padding-left:env(safe-area-inset-left); padding-right:env(safe-area-inset-right); }
+button, a, select { -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
+input, textarea, select { font-size:16px; }
+.club-auth { margin-top:clamp(24px,6vh,64px); }
+.club-auth-footer { flex-wrap:wrap; }
+.club-toast { bottom:calc(90px + env(safe-area-inset-bottom)); }
+@media(prefers-reduced-motion:reduce) { *, *::before, *::after { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }
+@media(prefers-reduced-transparency:reduce) { .panel,.club-header,.club-tabs,dialog,.stat { background:#f2f7f6; backdrop-filter:none; -webkit-backdrop-filter:none; } }

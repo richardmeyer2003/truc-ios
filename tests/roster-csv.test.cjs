@@ -1,0 +1,18 @@
+const assert = require('node:assert/strict');
+const csv = require('../web/roster-csv.js');
+const parsed = csv.parse('\uFEFFStudent ID,First Name,Last Name,Grade,Classroom\r\n000123,"Maya, M.",Example,3,"Room ""A"""\r\n');
+assert.equal(parsed.rows[0][0], '000123');
+assert.equal(parsed.rows[0][1], 'Maya, M.');
+assert.equal(parsed.rows[0][4], 'Room "A"');
+const data = csv.mapRows(parsed,csv.suggest(parsed.headers));
+assert.deepEqual(data[0],{student_id:'000123',first_name:'Maya, M.',last_name:'Example',grade:'3',classroom:'Room "A"'});
+assert.equal(csv.parse('A,B\n"line\nbreak",value').rows[0][0],'line\nbreak');
+assert.throws(()=>csv.parse('A,B\n"bad,value'),/closing/);
+assert.throws(()=>csv.parse('A,A\n1,2'),/unique/);
+assert.throws(()=>csv.parse('A,B\n1,2,3'),/same number/);
+assert.throws(()=>csv.parse('A,B\n"bad"x,2'),/Unexpected/);
+assert.throws(()=>csv.mapRows(parsed,{student_id:'0',first_name:'0',last_name:'2'}),/only once/);
+assert.throws(()=>csv.mapRows(parsed,{student_id:'',first_name:'1',last_name:'2'}),/Map Student/);
+assert.equal(csv.cell('=SUM(A1:A2)'), '"\'=SUM(A1:A2)"');
+assert.equal(csv.cell('000123'),'"000123"');
+console.log('CSV parser/mapping/export checks passed.');
