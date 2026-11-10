@@ -17,7 +17,7 @@ async function setup() {
     turc_enrollments:[{id:'e1',school_id:'school-1',school_year_id:'year-1',student_id:'student-1',grade:'3',classroom:'Parker',row_version:1}]
   };
   const user = {id:'user-1',email:'fixture@example.invalid'};
-  const control = {getUserCalls:0,gate:null,networkError:false};
+  const control = {getUserCalls:0,gate:null,networkError:false,progress:[{student_id:'student-1',year_mm:4828032}]};
   const root = { _html:'', attrs:{}, set innerHTML(html){this._html=html;writes.push(html);},get innerHTML(){return this._html;},
     setAttribute(name,value){this.attrs[name]=value;},querySelectorAll(){return [];},contains(){return false;} };
   const dialog = {open:false,innerHTML:'',close(){this.open=false;},showModal(){this.open=true;}};
@@ -34,7 +34,7 @@ async function setup() {
     return query;
   }
   let authChanged;
-  const client = {from,auth:{getSession:async()=>({data:{session:{user}}}),getUser:async()=>{control.getUserCalls++;if(control.gate)await control.gate;return {data:{user}};},
+  const client = {from,rpc:async()=>({data:structuredClone(control.progress)}),auth:{getSession:async()=>({data:{session:{user}}}),getUser:async()=>{control.getUserCalls++;if(control.gate)await control.gate;return {data:{user}};},
     onAuthStateChange(fn){authChanged=fn;},signOut:async()=>{authChanged('SIGNED_OUT',null);return {};},stopAutoRefresh(){}}};
   const storage = new Map();
   const sandbox = {document,navigator:{onLine:true},console,Date,URL,Blob,TextDecoder,
@@ -43,6 +43,7 @@ async function setup() {
     TURC_SUPABASE:{url:'https://example.invalid',publishableKey:'fixture'},supabase:{createClient:()=>client},
     scrollX:0,scrollY:0,scrollTo(x,y){this.scrollX=x;this.scrollY=y;},addEventListener(name,fn){windowHandlers[name]=fn;}};
   sandbox.window = sandbox;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../web/progress.js'),'utf8'),sandbox);
   vm.runInNewContext(source,sandbox,{filename:'club.js'});
   await flush();
   const click = async(action,extra={})=>{handlers.click({target:{closest:()=>({dataset:{action,...extra}})}});await flush();};
@@ -109,4 +110,13 @@ test('revoked access is applied even if typing begins during the request',async(
 test('a downgraded role clears previous privileged data even if the roster request fails',async()=>{
   const h=await setup();await h.click('tab',{tab:'roster'});h.data.turc_memberships[0].role='staff';h.control.networkError=true;
   await h.timer();assert(!h.root.innerHTML.includes('Maya'));assert(!h.root.innerHTML.includes('Add runner'));assert.match(h.sync.textContent,/Update paused/);
+});
+
+test('school-year progress appears beside names and refreshes when mileage changes',async()=>{
+  const h=await setup();await h.click('tab',{tab:'roster'});
+  assert.match(h.root.innerHTML,/3.00 mi this year/);assert.match(h.root.innerHTML,/2.00 mi to 5 miles/);
+  h.control.progress[0].year_mm=8046720;await h.timer();
+  assert.match(h.root.innerHTML,/5.00 mi this year/);assert.match(h.root.innerHTML,/5.00 mi to 10 miles/);
+  h.control.progress=[];await h.timer();assert.match(h.root.innerHTML,/Progress unavailable/);
+  assert.doesNotMatch(h.root.innerHTML,/0.00 mi this year/);
 });

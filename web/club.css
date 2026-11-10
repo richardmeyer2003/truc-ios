@@ -100,3 +100,11 @@
   .club-auth .panel { padding:25px; }
 }
 @media(prefers-reduced-transparency:reduce) { .club-header,.club-tabs { background:#f2f7f8; backdrop-filter:none; } }
+
+.runner-name-progress { display:flex; align-items:center; flex-wrap:wrap; gap:14px 24px; }
+.runner-progress { display:grid; gap:5px; min-width:155px; color:#45675f; font-size:12px; white-space:normal; }
+.runner-progress b { font-size:13px; }
+.runner-progress progress { display:block; width:100%; height:6px; border:0; border-radius:8px; overflow:hidden; background:#d8e4df; accent-color:#287568; }
+.runner-progress progress::-webkit-progress-bar { background:#d8e4df; border-radius:8px; }
+.runner-progress progress::-webkit-progress-value { background:#287568; border-radius:8px; }
+@media(max-width:600px) { .runner-name-progress { justify-content:space-between; gap:12px; } .runner-progress { min-width:145px; flex:1; } }

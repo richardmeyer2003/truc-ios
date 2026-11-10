@@ -16,7 +16,7 @@ xcodebuild \
   CODE_SIGNING_REQUIRED=NO \
   CODE_SIGN_IDENTITY='' \
   CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER:-1}" \
-  MARKETING_VERSION=0.3.0 \
+  MARKETING_VERSION=0.4.0 \
   build 2>&1 | tee build/xcodebuild.log
 
 app='build/DerivedData/Build/Products/Release-iphoneos/App.app'
@@ -35,7 +35,7 @@ shasum -a 256 artifacts/TURC-unsigned.ipa > artifacts/SHA256SUMS.txt
 cp www/build-info.json artifacts/build-info.json
 cp ios/App/App/TURC.entitlements artifacts/TURC-required.entitlements
 cat > artifacts/README.txt <<'EOF'
-TURC 0.3.0 — unsigned iPhone app
+TURC 0.4.0 — unsigned iPhone app
 Sign this IPA using your own signing method before installing it.
 No Apple signing credentials or provisioning profiles are included.
 Sign in with your existing TURC website account, not your GitHub dashboard account.

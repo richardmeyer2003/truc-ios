@@ -1,3 +1,5 @@
+import '../web/progress.js';
+
 export const credentialPattern = /^turc:v1:[a-f0-9]{64}$/;
 export const uidPattern = /^[A-F0-9]{14}$/;
 export function scanPayload(event, school, device) {
@@ -8,8 +10,13 @@ export function scanPayload(event, school, device) {
 }
 export const miles = mm => (Number(mm || 0)/1609344).toFixed(2);
 export function scanFeedback(result) {
-  if (result.accepted) return {accepted:true,title:`${result.name} · Lap ${result.totals.today_laps}`,
-    detail:`Today ${miles(result.totals.today_mm)} mi · Year ${miles(result.totals.year_mm)} mi · Lifetime ${miles(result.totals.lifetime_mm)} mi`};
+  if (result.accepted) {
+    const progress=globalThis.TurcProgress;
+    const total=result.totals?.year_mm;
+    const milestone=total!=null&&Number.isFinite(Number(total)) ? progress.milestone(total) : null;
+    const next=milestone ? (milestone.next ? `${progress.remaining(milestone.remaining)} mi to next milestone` : 'All milestones reached') : 'Next milestone unavailable';
+    return {accepted:true,title:result.name,detail:`Today ${miles(result.totals?.today_mm)} mi · ${next}`};
+  }
   const reasons = {cooldown:'Too soon for another lap',unknown_or_replaced_badge:'Unknown or replaced badge',inactive_runner:'Runner is not actively enrolled',course_not_configured:'Ask an Admin to configure the course',no_active_year:'No active school year for today',clock_or_connection:'Check your clock and connection; scan again'};
   return {accepted:false,title:reasons[result.reason] || 'Lap was not recorded',detail:'No lap added.'};
 }

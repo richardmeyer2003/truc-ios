@@ -20,7 +20,7 @@ test('native NFC implementation contains UID reads and no tag write operation',(
 test('feedback distinguishes accepted laps from cooldown and never claims rejection counted',async()=>{
   const {scanFeedback}=await import('../src/scan-contract.mjs');
   const ok=scanFeedback({accepted:true,name:'Maya Example',totals:{today_laps:2,today_mm:1609344,year_mm:3218688,lifetime_mm:4828032}});
-  assert.equal(ok.title,'Maya Example · Lap 2');assert.match(ok.detail,/Today 1.00 mi · Year 2.00 mi · Lifetime 3.00 mi/);
+  assert.equal(ok.title,'Maya Example');assert.equal(ok.detail,'Today 1.00 mi · 3.00 mi to next milestone');
   const no=scanFeedback({accepted:false,reason:'cooldown'});assert.equal(no.accepted,false);assert.equal(no.detail,'No lap added.');
 });
 
@@ -50,4 +50,18 @@ test('sign-out or school change discards in-flight scan feedback',async()=>{
   const h=await harness(async()=>{await wait;return {data:{accepted:true,name:'Private runner',totals:{today_laps:1}}};});
   const inFlight=h.scan();h.scanner.reset();h.context(null);finish();await inFlight;
   assert.deepEqual(h.feedback,[]);assert.doesNotMatch(h.scanner.panel(),/Private runner/);
+});
+
+test('milestone feedback matches website thresholds, rounds remaining positively, and uses school year',async()=>{
+  const {scanFeedback}=await import('../src/scan-contract.mjs');
+  const p=globalThis.TurcProgress;
+  for (const target of p.targets) {
+    const before=scanFeedback({accepted:true,name:'Maya',totals:{today_mm:4828032,year_mm:target.mm-1,lifetime_mm:999999999}});
+    assert.equal(before.detail,'Today 3.00 mi · 0.01 mi to next milestone');
+    const at=scanFeedback({accepted:true,name:'Maya',totals:{today_mm:4828032,year_mm:target.mm}});
+    assert.equal(at.title,'Maya');assert.doesNotMatch(at.detail,/Lap |Year |Lifetime /);
+    if(target.miles===50)assert.equal(at.detail,'Today 3.00 mi · All milestones reached');
+    else assert.match(at.detail,/mi to next milestone$/);
+  }
+  assert.match(scanFeedback({accepted:true,name:'Maya',totals:{today_mm:0}}).detail,/Next milestone unavailable/);
 });

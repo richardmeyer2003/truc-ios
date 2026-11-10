@@ -11,3 +11,6 @@ Badge/course changes and accepted laps create audit entries containing changed f
 Private operational tables intentionally have RLS without policies and no browser table grants. Supabase's informational no-policy notices are expected for these deny-by-default tables. [Advisor explanation](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy). Existing leaked-password protection remains unavailable on the selected Free plan; no paid service was enabled.
 
 Hosted verification passed 26 new scanning checks plus the existing 36 foundation and 21 import checks. All use isolated fictional fixtures and end with ROLLBACK. No test login credentials or persistent runners were created.
+# Progress snapshot
+
+`20261110032634_turc_progress_corrections.sql` was already deployed by the connected website. Version 0.4.0 consumes its authorized school-progress RPC and effective scan totals; do not reapply the migration to the existing hosted project.

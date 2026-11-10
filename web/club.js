@@ -81,12 +81,15 @@
   async function readRoster(school) {
     const years = await rows(() => client.from('turc_school_years').select('id,school_id,label,active,row_version').eq('school_id',school.id).order('starts_on',{ascending:false}).order('id'));
     const year = years.find(y => y.active) || null;
-    const [students, enrollments] = await Promise.all([
+    const [students, enrollments, progress] = await Promise.all([
       rows(() => client.from('turc_students').select('id,school_id,external_student_id,first_name,last_name,active,row_version').eq('school_id',school.id).order('last_name').order('id')),
-      year ? rows(() => client.from('turc_enrollments').select('id,student_id,grade,classroom,row_version').eq('school_id',school.id).eq('school_year_id',year.id).order('id')) : []
+      year ? rows(() => client.from('turc_enrollments').select('id,student_id,grade,classroom,row_version').eq('school_id',school.id).eq('school_year_id',year.id).order('id')) : [],
+      client.rpc('turc_school_progress',{p_school:school.id})
     ]);
+    if (progress.error) throw progress.error;
+    const byStudent = new Map((progress.data || []).map(x => [x.student_id,x]));
     const byId = new Map(enrollments.map(x => [x.student_id,x]));
-    return { years, year, students:students.map(x => ({ ...x, enrollment:byId.get(x.id) || null })) };
+    return { years, year, students:students.map(x => ({ ...x, enrollment:byId.get(x.id) || null, progress:byStudent.get(x.id) || null })) };
   }
   async function fetchRoster(token) {
     const school = s.school, roster = await readRoster(school);
@@ -196,11 +199,18 @@
     const active = s.students.filter(x => x.active).length, classrooms = new Set(s.students.map(x => x.enrollment?.classroom).filter(Boolean)).size;
     return `<section class="welcome-card"><div><div class="eyebrow">A SCHOOL OF POSSIBILITIES</div><h2>${s.role === 'parent' ? 'Every little step has a cheering section.' : 'Your runners, one shared roster.'}</h2><p>${s.role === 'admin' ? 'Bring your fictional school roster into the club. Review changes before anything is saved.' : s.role === 'parent' ? 'See the runners linked to your account. Their school history stays together.' : 'Your assigned school’s active runners are ready to view on this device.'}</p></div>${action(s.role === 'admin' ? 'Import your roster →' : 'Meet your runners →',s.role === 'admin' ? 'open-import' : 'open-roster','light')}</section>
       <div class="club-stats"><section class="stat"><div class="stat-label">${s.role === 'parent' ? 'Linked runners' : 'Active runners'}</div><strong>${active}</strong><small>From your shared school roster</small></section><section class="stat"><div class="stat-label">Classrooms</div><strong>${classrooms}</strong><small>In the active school year</small></section><section class="stat"><div class="stat-label">School year</div><strong style="font-size:25px">${s.year ? esc(s.year.label) : 'Not set'}</strong><small>Year-specific enrollment records</small></section></div>
-      <section class="panel club-panel"><h2>One club, across your devices.</h2><p>Roster changes are saved centrally. Open TURC on another device with the same account to see the same runners.</p><div class="notice">This milestone connects accounts and student rosters. Badge pairing, lap scanning, mileage, and awards have not been connected yet.</div></section>`;
+      <section class="panel club-panel"><h2>One club, across your devices.</h2><p>Roster changes are saved centrally. Open TURC on another device with the same account to see the same runners.</p><div class="notice">Scan QR badges or NTAG215 stickers in the app. Runners’ school-year mileage and progress to their next milestone appear beside their names.</div></section>`;
+  }
+  function runnerProgress(student) {
+    const total=student.progress?.year_mm, p=window.TurcProgress;
+    if (!s.year) return '<span class="runner-progress">No active school year</span>';
+    if (total==null || !Number.isFinite(Number(total))) return '<span class="runner-progress">Progress unavailable</span>';
+    const m=p.milestone(total);
+    return `<div class="runner-progress"><b>${p.miles(total)} mi this year</b><span>${m.next ? `${p.remaining(m.remaining)} mi to ${esc(m.next.label)}` : 'All milestones reached'}</span><progress max="100" value="${m.percent}" aria-label="${esc(student.first_name+' '+student.last_name)}: progress to next milestone">${m.percent}%</progress></div>`;
   }
   function rosterRows() {
     const q = s.search.toLowerCase(); const list = s.students.filter(x => [x.first_name,x.last_name,x.external_student_id,x.enrollment?.grade,x.enrollment?.classroom].join(' ').toLowerCase().includes(q));
-    return list.map(x => `<tr><td><div class="club-person"><span class="avatar">${esc(x.first_name[0]+x.last_name[0])}</span><div><b>${esc(x.first_name+' '+x.last_name)}</b><small>${esc(x.external_student_id)}</small></div></div></td><td>${esc(x.enrollment?.grade || '—')}</td><td>${esc(x.enrollment?.classroom || '—')}</td><td><span class="chip ${x.active ? '' : 'gray'}">${x.active ? 'Active' : 'Archived'}</span></td><td>${action('View','detail','outline',`data-id="${esc(x.id)}"`)}</td></tr>`).join('') || '<tr><td colspan="5" class="club-empty">No runners match this search.</td></tr>';
+    return list.map(x => `<tr><td><div class="runner-name-progress"><div class="club-person"><span class="avatar">${esc(x.first_name[0]+x.last_name[0])}</span><div><b>${esc(x.first_name+' '+x.last_name)}</b><small>${esc(x.external_student_id)}</small></div></div>${runnerProgress(x)}</div></td><td>${esc(x.enrollment?.grade || '—')}</td><td>${esc(x.enrollment?.classroom || '—')}</td><td><span class="chip ${x.active ? '' : 'gray'}">${x.active ? 'Active' : 'Archived'}</span></td><td>${action('View','detail','outline',`data-id="${esc(x.id)}"`)}</td></tr>`).join('') || '<tr><td colspan="5" class="club-empty">No runners match this search.</td></tr>';
   }
   function roster() {
     return `<section class="panel club-panel"><div class="club-section-title"><div><h2>${s.role === 'parent' ? 'Your runners' : 'School roster'}</h2><p class="club-note">${s.role === 'parent' ? 'Only children linked to your account appear here.' : 'Student IDs stay consistent as runners move through school years.'}</p></div>${s.role === 'admin' ? `<div class="club-actions">${action('Add runner','add')}${action('Export CSV','export','outline')}</div>` : ''}</div>
@@ -277,7 +287,7 @@
     }
     if (name === 'refresh') { await refresh(); return; }
     if (name === 'close') { window.TURC_SCANNER?.clearBadge(); dialog.close(); dialog.innerHTML = ''; return; }
-    if (name === 'tab') { s.tab = target.dataset.tab; s.error = ''; if(s.tab==='scanner')await window.TURC_SCANNER?.loadCourse(); render(); window.scrollTo(0,0); return; }
+    if (name === 'tab') { s.tab = target.dataset.tab; s.error = ''; if(s.tab==='scanner')await window.TURC_SCANNER?.loadCourse(); render(); window.scrollTo(0,0); if(s.tab==='roster')await refresh({background:true}); return; }
     if (name === 'open-import' || name === 'open-roster') { s.tab = name === 'open-import' ? 'import' : 'roster'; s.error = ''; render(); window.scrollTo(0,0); return; }
     if (name === 'reset-import') { resetImport(); s.error = ''; render(); return; }
     if (name === 'detail') { await runnerDetail(target.dataset.id); return; }
