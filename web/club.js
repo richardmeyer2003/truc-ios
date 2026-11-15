@@ -287,7 +287,7 @@
     }
     if (name === 'refresh') { await refresh(); return; }
     if (name === 'close') { window.TURC_SCANNER?.clearBadge(); dialog.close(); dialog.innerHTML = ''; return; }
-    if (name === 'tab') { s.tab = target.dataset.tab; s.error = ''; if(s.tab==='scanner')await window.TURC_SCANNER?.loadCourse(); render(); window.scrollTo(0,0); if(s.tab==='roster')await refresh({background:true}); return; }
+    if (name === 'tab') { s.tab = target.dataset.tab; s.error = ''; if(s.tab==='scanner')await window.TURC_SCANNER?.loadPanel?.(); render(); window.scrollTo(0,0); if(s.tab==='roster')await refresh({background:true}); return; }
     if (name === 'open-import' || name === 'open-roster') { s.tab = name === 'open-import' ? 'import' : 'roster'; s.error = ''; render(); window.scrollTo(0,0); return; }
     if (name === 'reset-import') { resetImport(); s.error = ''; render(); return; }
     if (name === 'detail') { await runnerDetail(target.dataset.id); return; }

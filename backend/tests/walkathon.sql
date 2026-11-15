@@ -1,0 +1,98 @@
+begin;
+do $test$
+<<fixture>>
+declare
+  admin_id uuid:=gen_random_uuid(); staff_a uuid:=gen_random_uuid(); staff_b uuid:=gen_random_uuid(); parent_id uuid:=gen_random_uuid(); outsider uuid:=gen_random_uuid();
+  district uuid:=gen_random_uuid(); school uuid:=gen_random_uuid(); other_school uuid:=gen_random_uuid(); year_id uuid:=gen_random_uuid();
+  tom uuid:=gen_random_uuid(); sal uuid:=gen_random_uuid(); foreign_student uuid:=gen_random_uuid(); invalid_grade uuid:=gen_random_uuid();
+  event_id uuid; other_event uuid; tom_code text; sal_code text; req uuid:=gen_random_uuid();
+  result jsonb; replay jsonb; board jsonb; stamp timestamptz; actor_id uuid;
+begin
+  foreach actor_id in array array[admin_id,staff_a,staff_b,parent_id,outsider] loop
+    insert into auth.users(id,email,aud,role,is_anonymous) values(actor_id,'walk-fixture-'||actor_id||'@example.invalid','authenticated','authenticated',false);
+    insert into public.turc_accounts(user_id,display_name) values(actor_id,'Walk-a-thon fixture');
+  end loop;
+  insert into public.turc_districts(id,name) values(district,'Walk-a-thon fixture');
+  insert into public.turc_schools(id,district_id,name,timezone) values(school,district,'Walk test school','America/Los_Angeles'),(other_school,district,'Other school','America/Los_Angeles');
+  insert into public.turc_school_years(id,school_id,label,starts_on,ends_on,active) values(year_id,school,'Test year',current_date-100,current_date+100,true);
+  insert into public.turc_students(id,school_id,external_student_id,first_name,last_name) values(tom,school,'T','Tommy','Test'),(sal,school,'S','Sally','Sample'),(invalid_grade,school,'I','Invalid','Grade'),(foreign_student,other_school,'F','Other','School');
+  insert into public.turc_enrollments(school_id,student_id,school_year_id,grade,classroom) values (school,tom,year_id,'Grade 3','Ms. Kim'),(school,sal,year_id,'03','Mr. Lee'),(school,invalid_grade,year_id,'6','Ms. Chan');
+  insert into public.turc_memberships(user_id,district_id,school_id,role) values(admin_id,district,school,'admin'),(staff_a,district,school,'staff'),(staff_b,district,school,'staff'),(parent_id,district,school,'parent'),(outsider,district,other_school,'staff');
+  insert into public.turc_guardian_links(guardian_user_id,school_id,student_id) values(parent_id,school,tom);
+
+  perform set_config('request.jwt.claim.sub',admin_id::text,true); set local role authenticated;
+  result:=public.turc_walk_save_event(school,null,'Fictional Walk-a-thon',60,'draft'); event_id:=(result->>'id')::uuid;
+  if result->>'status'<>'draft' then raise exception 'Event did not start as draft'; end if;
+  begin perform public.turc_walk_save_event(school,event_id,null,null,'open');raise exception 'Empty event opened';exception when invalid_parameter_value then null; end;
+  begin perform public.turc_walk_registration(event_id,array[foreign_student]);raise exception 'Cross-school registration';exception when invalid_parameter_value then null; end;
+  begin perform public.turc_walk_registration(event_id,array[invalid_grade]);raise exception 'Grade outside TK–5 accepted';exception when invalid_parameter_value then null; end;
+  result:=public.turc_walk_registration(event_id,array[tom,sal,tom]);
+  if jsonb_array_length(result->'entries')<>2 then raise exception 'Selected roster mismatch';end if;
+  select x->>'code' into tom_code from jsonb_array_elements(result->'entries') x where x->>'student_id'=tom::text and x->>'grade'='3' and x->>'teacher'='Ms. Kim';
+  select x->>'code' into sal_code from jsonb_array_elements(result->'entries') x where x->>'student_id'=sal::text and x->>'grade'='3';
+  if tom_code is null or sal_code is null or tom_code=sal_code then raise exception 'Bib QR data missing';end if;
+  replay:=public.turc_walk_registration(event_id,array[tom,sal]);
+  if replay->'entries' is distinct from result->'entries' then raise exception 'Reprinting rotated a bib';end if;
+  result:=public.turc_walk_scan(event_id,tom_code,gen_random_uuid());
+  if result->>'reason'<>'event_not_open' then raise exception 'Draft accepted scan';end if;
+  perform public.turc_walk_save_event(school,event_id,null,null,'open');
+  begin perform public.turc_walk_registration(event_id,array[tom]);raise exception 'Open registration changed';exception when invalid_parameter_value then null; end;
+  result:=public.turc_walk_save_event(school,null,'Separate Walk-a-thon',60,'draft');other_event:=(result->>'id')::uuid;
+  perform public.turc_walk_registration(other_event,array[tom]);
+  perform public.turc_walk_save_event(school,other_event,null,null,'open');
+  result:=public.turc_walk_scan(other_event,tom_code,gen_random_uuid());
+  if result->>'reason'<>'unknown_bib' then raise exception 'Bib worked for a different event';end if;
+
+  perform set_config('request.jwt.claim.sub',staff_a::text,true);
+  begin perform public.turc_walk_registration(event_id);raise exception 'Staff read bib credentials';exception when insufficient_privilege then null;end;
+  begin perform public.turc_walk_save_event(school,event_id,null,1,'open');raise exception 'Staff edited event';exception when insufficient_privilege then null;end;
+  result:=public.turc_walk_scan(event_id,tom_code,req);
+  if result->>'accepted'<>'true' or (result->>'laps')::int<>1 then raise exception 'First lap not accepted';end if;
+  replay:=public.turc_walk_scan(event_id,tom_code,req);
+  if replay->>'replayed'<>'true' or (replay->>'laps')::int<>1 then raise exception 'Retry counted twice';end if;
+  begin perform public.turc_walk_scan(event_id,sal_code,req);raise exception 'Request reuse with changed QR accepted';exception when invalid_parameter_value then null;end;
+  reset role;
+  select w.last_lap_at into stamp from turc_private.walk_entries w where w.event_id=fixture.event_id and w.student_id=tom;
+  perform set_config('request.jwt.claim.sub',staff_b::text,true);set local role authenticated;
+  result:=public.turc_walk_scan(event_id,tom_code,gen_random_uuid());
+  if result->>'reason'<>'too_soon' or (result->>'remaining_seconds')::int not between 1 and 60 or (result->>'laps')::int<>1 then raise exception 'Second staff scanner bypassed cooldown';end if;
+  reset role;
+  if (select last_lap_at from turc_private.walk_entries w where w.event_id=fixture.event_id and w.student_id=tom) is distinct from stamp then raise exception 'Rejection restarted lap timer';end if;
+  set local role authenticated;
+  result:=public.turc_walk_scan(event_id,sal_code,gen_random_uuid());
+  if result->>'accepted'<>'true' then raise exception 'Different runner was blocked';end if;
+  board:=public.turc_walk_display(event_id);
+  if board#>>'{rows,0,name}' is distinct from 'Tommy T.' or board#>>'{rows,1,name}' is distinct from 'Sally S.' then raise exception 'First to lap count did not lead tie';end if;
+  if board::text like '%wt1:%' or board::text like '%Kim%' then raise exception 'Leaderboard leaked bib data';end if;
+  reset role;
+  update turc_private.walk_entries w set last_lap_at=clock_timestamp()-interval '61 seconds' where w.event_id=fixture.event_id and w.student_id=sal;
+  set local role authenticated;
+  result:=public.turc_walk_scan(event_id,sal_code,gen_random_uuid());
+  if result->>'accepted'<>'true' or (result->>'laps')::int<>2 then raise exception 'Scan after cutoff not accepted';end if;
+  board:=public.turc_walk_display(event_id);
+  if board#>>'{rows,0,name}' is distinct from 'Sally S.' or board#>>'{rows,0,laps}' is distinct from '2' then raise exception 'Sally did not overtake Tommy';end if;
+  begin perform public.turc_walk_scan(event_id,'turc:v1:'||repeat('a',64),gen_random_uuid());raise exception 'TURC QR accepted';exception when invalid_parameter_value then null;end;
+  begin select to_jsonb(w) into result from turc_private.walk_entries w limit 1;raise exception 'Direct credentials readable';exception when insufficient_privilege then null;end;
+
+  perform set_config('request.jwt.claim.sub',parent_id::text,true);
+  begin perform public.turc_walk_display(event_id);raise exception 'Parent viewed whole leaderboard';exception when insufficient_privilege then null;end;
+  perform set_config('request.jwt.claim.sub',outsider::text,true);
+  begin perform public.turc_walk_scan(event_id,tom_code,gen_random_uuid());raise exception 'Other school recorded lap';exception when insufficient_privilege then null;end;
+  begin perform public.turc_walk_display(event_id);raise exception 'Other school read standings';exception when insufficient_privilege then null;end;
+  perform set_config('request.jwt.claim.sub',admin_id::text,true);
+  perform public.turc_walk_save_event(school,event_id,null,null,'closed');
+  begin perform public.turc_walk_save_event(school,event_id,null,null,'open');raise exception 'Final event reopened';exception when invalid_parameter_value then null;end;
+  perform set_config('request.jwt.claim.sub',staff_a::text,true);
+  result:=public.turc_walk_scan(event_id,tom_code,gen_random_uuid());
+  if result->>'reason'<>'event_not_open' then raise exception 'Closed event accepted scan';end if;
+  result:=public.turc_walk_scan(event_id,tom_code,req);
+  if result->>'replayed'<>'true' then raise exception 'Close discarded previous receipt';end if;
+  reset role;
+  if exists(select 1 from public.turc_laps l where l.school_id=school) then raise exception 'Walk-a-thon contributed TURC mileage';end if;
+  perform set_config('request.jwt.claim.sub','',true);set local role anon;
+  begin perform public.turc_walk_display(event_id);raise exception 'Anonymous display allowed';exception when insufficient_privilege then null;end;
+  reset role;
+end;
+$test$;
+select 'Walk-a-thon registration, duplicate timing, ranking, event isolation, and permissions passed' as result;
+rollback;

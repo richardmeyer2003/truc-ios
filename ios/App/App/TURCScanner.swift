@@ -9,6 +9,10 @@ private func validBadge(_ value: String) -> Bool {
     value.range(of: "^turc:v1:[a-f0-9]{64}$", options: .regularExpression) != nil
 }
 
+private func validWalkBib(_ value: String) -> Bool {
+    value.range(of: "^wt1:[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$", options: .regularExpression) != nil
+}
+
 @objc(TURCScannerPlugin)
 public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "TURCScannerPlugin"
@@ -26,6 +30,7 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     private var nfc: TURCUIDReader?
     private var runID: String?
     private var recent: [String: Date] = [:]
+    private var awaitingWalkResult = false
     private var backgroundObserver: NSObjectProtocol?
 
     public override func load() {
@@ -42,29 +47,39 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
             let id = call.getString("runID") ?? UUID().uuidString
             let controller = TURCQRController()
             controller.school = call.getString("school") ?? "Your school"
+            controller.walkathon = call.getString("mode") == "walkathon"
             controller.useCamera = call.getString("mode") != "nfc"
             controller.onValue = { [weak self] value in self?.emit(value, source: "qr") }
-            controller.onNFC = { [weak self] in self?.readNFC() }
+            if !controller.walkathon { controller.onNFC = { [weak self] in self?.readNFC() } }
             controller.onClose = { [weak self] in self?.stop() }
-            self.scanner = controller; self.runID = id; self.recent = [:]
+            self.scanner = controller; self.runID = id; self.recent = [:]; self.awaitingWalkResult = false
             controller.modalPresentationStyle = .fullScreen
             parent.present(controller, animated: true) { call.resolve(["runID": id]); if !controller.useCamera { self.readNFC() } }
         }
     }
     private func emit(_ value: String, source: String) {
         guard let id = runID else { return }
-        let valid = source == "nfc" ? value.range(of: "^[A-F0-9]{14}$", options: .regularExpression) != nil : validBadge(value)
-        guard valid else { scanner?.show("Not a TURC badge", detail: "Use a QR badge or assigned NTAG215 sticker.", success: false); return }
+        let isWalkathon = scanner?.walkathon == true
+        if isWalkathon && awaitingWalkResult { return }
+        let valid: Bool
+        if isWalkathon { valid = source == "qr" && validWalkBib(value) }
+        else { valid = source == "nfc" ? value.range(of: "^[A-F0-9]{14}$", options: .regularExpression) != nil : validBadge(value) }
+        guard valid else {
+            scanner?.show(isWalkathon ? "Use a Walk-a-thon bib" : "Not a TURC badge",
+                          detail: isWalkathon ? "Scan the QR code printed on the event bib." : "Use a QR badge or assigned NTAG215 sticker.", success: false)
+            return
+        }
         let now = Date()
         let previous = recent[value]
         recent[value] = now
         if let previous = previous, now.timeIntervalSince(previous) < 1.5 { return }
         if recent.count > 300 { recent = recent.filter { now.timeIntervalSince($0.value) < 5 } }
-        scanner?.show("Checking badge…", detail: "Waiting for your club", success: nil)
+        awaitingWalkResult = isWalkathon
+        scanner?.show(isWalkathon ? "Checking lap…" : "Checking badge…", detail: "Waiting for the server", success: nil)
         notifyListeners("scan", data: ["runID": id, "value": value, "source": source, "eventID": UUID().uuidString, "observedAt": ISO8601DateFormatter().string(from: now)])
     }
     private func readNFC() {
-        guard nfc == nil else { return }
+        guard nfc == nil, scanner?.walkathon != true else { return }
         guard NFCTagReaderSession.readingAvailable else { scanner?.show("NFC unavailable", detail: "Check your signing method's NFC entitlement. QR is available separately.", success: false); return }
         scanner?.pauseCamera()
         let reader = TURCUIDReader()
@@ -77,7 +92,7 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         reader.begin()
     }
     private func stop() {
-        let id = runID; runID = nil
+        let id = runID; runID = nil; awaitingWalkResult = false
         nfc?.cancel(); nfc = nil
         scanner?.shutdown(); scanner?.dismiss(animated: true); scanner = nil
         if let id = id { notifyListeners("closed", data: ["runID": id]) }
@@ -89,6 +104,7 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
             let title = String((call.getString("title") ?? "").prefix(120))
             let detail = String((call.getString("detail") ?? "").prefix(240))
             let accepted = call.getBool("accepted") ?? false
+            self?.awaitingWalkResult = false
             self?.scanner?.show(title, detail: detail, success: accepted)
             self?.nfc?.message(title + "\n" + detail)
             if accepted { UINotificationFeedbackGenerator().notificationOccurred(.success); AudioServicesPlaySystemSound(1104) }
@@ -153,6 +169,7 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
 private final class TURCQRController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
     var school = "Your school"
     var useCamera = true
+    var walkathon = false
     var onValue: ((String) -> Void)?
     var onNFC: (() -> Void)?
     var onClose: (() -> Void)?
@@ -173,7 +190,9 @@ private final class TURCQRController: UIViewController, AVCaptureMetadataOutputO
         titleLabel.font = .systemFont(ofSize: 26, weight: .bold); titleLabel.numberOfLines = 2
         detailLabel.font = .systemFont(ofSize: 17); detailLabel.numberOfLines = 4
         let labels = UIStackView(arrangedSubviews: [titleLabel, detailLabel]); labels.axis = .vertical; labels.spacing = 9
-        let modes = UIStackView(arrangedSubviews: [button("Camera QR", action: #selector(cameraTapped)), button("NFC stickers", action: #selector(nfcTapped))]); modes.spacing = 12; modes.distribution = .fillEqually
+        var modeButtons = [button("Camera QR", action: #selector(cameraTapped))]
+        if !walkathon { modeButtons.append(button("NFC stickers", action: #selector(nfcTapped))) }
+        let modes = UIStackView(arrangedSubviews: modeButtons); modes.spacing = 12; modes.distribution = .fillEqually
         for child in [header, feedback, modes] { child.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(child) }
         labels.translatesAutoresizingMaskIntoConstraints = false; feedback.contentView.addSubview(labels)
         NSLayoutConstraint.activate([
@@ -182,7 +201,8 @@ private final class TURCQRController: UIViewController, AVCaptureMetadataOutputO
             feedback.leadingAnchor.constraint(equalTo: header.leadingAnchor), feedback.trailingAnchor.constraint(equalTo: header.trailingAnchor), feedback.bottomAnchor.constraint(equalTo: modes.topAnchor, constant: -18),
             labels.leadingAnchor.constraint(equalTo: feedback.contentView.leadingAnchor, constant: 22), labels.trailingAnchor.constraint(equalTo: feedback.contentView.trailingAnchor, constant: -22), labels.topAnchor.constraint(equalTo: feedback.contentView.topAnchor, constant: 22), labels.bottomAnchor.constraint(equalTo: feedback.contentView.bottomAnchor, constant: -22)
         ])
-        show("Ready for your runners", detail: "Present a TURC QR badge or tap NFC stickers. Laps count only after the server confirms them.", success: nil)
+        show(walkathon ? "Ready to scan bibs" : "Ready for your runners",
+             detail: walkathon ? "Scan the QR on each Walk-a-thon bib. Wait for the lap confirmation before scanning again." : "Present a TURC QR badge or tap NFC stickers. Laps count only after the server confirms them.", success: nil)
         UIApplication.shared.isIdleTimerDisabled = true
         if useCamera { startCamera() }
     }
@@ -198,14 +218,14 @@ private final class TURCQRController: UIViewController, AVCaptureMetadataOutputO
         AVCaptureDevice.requestAccess(for: .video) { [weak self] allowed in
             DispatchQueue.main.async {
                 guard let self = self, !self.closed else { return }
-                guard allowed else { self.show("Camera permission needed", detail: "Enable Camera for TURC in iPhone Settings. NFC can be used separately.", success: false); return }
+                guard allowed else { self.show("Camera permission needed", detail: "Enable Camera for TURC in iPhone Settings.", success: false); return }
                 self.configureCamera()
             }
         }
     }
     private func configureCamera() {
         if configured { resumeCamera(); return }
-        guard let device = AVCaptureDevice.default(for: .video), let input = try? AVCaptureDeviceInput(device: device), capture.canAddInput(input) else { show("Camera unavailable", detail: "Try NFC or reopen the scanner.", success: false); return }
+        guard let device = AVCaptureDevice.default(for: .video), let input = try? AVCaptureDeviceInput(device: device), capture.canAddInput(input) else { show("Camera unavailable", detail: walkathon ? "Try reopening the scanner." : "Try NFC or reopen the scanner.", success: false); return }
         capture.beginConfiguration(); capture.addInput(input)
         let output = AVCaptureMetadataOutput()
         guard capture.canAddOutput(output) else { capture.commitConfiguration(); show("QR scanner unavailable", detail: "Try reopening the scanner.", success: false); return }

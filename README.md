@@ -1,6 +1,6 @@
 # TURC for iPhone
 
-TURC 0.3.0 uses read-only NTAG215 factory UID assignment, printable student badges with QR codes, native camera/NFC scanning, and shared online lap records. It preserves the connected Liquid Glass clubhouse and existing Supabase accounts/roster. The app never writes to NFC tags.
+TURC uses read-only NTAG215 factory UID assignment, printable student badges with QR codes, native camera/NFC scanning, and shared online lap records. It uses the existing TURC accounts and roster. Version 0.5.0 adds **Scan → Walk-a-thon** for QR-only event bibs. An Admin registers participants, prints bibs, sets the minimum lap time, and opens the event on the website. Walk-a-thon laps update the event leaderboard without adding TURC mileage.
 
 Develop on Windows. GitHub-hosted macOS compiles the iPhone app. The workflow produces an **unsigned IPA** for the owner's existing signing/sideloading process. No Apple developer credentials, Mac computer, TestFlight, or paid build service are required to prepare the build.
 

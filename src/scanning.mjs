@@ -1,10 +1,13 @@
 import { scanPayload, scanFeedback, miles, uidPattern } from './scan-contract.mjs';
+import { createWalkScanning } from './walkathon.mjs';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const button = (text,action,id='') => `<button type="button" class="btn" data-action="${action}" data-id="${esc(id)}">${text}</button>`;
 const allowed = context => context?.school && context?.year && ['admin','staff'].includes(context.role);
 
 export function createScanning(plugin,isNative) {
+  const walk = createWalkScanning(plugin,isNative);
+  let scanMode = 'turc';
   let client, getContext, changed, course=null, latest=null, badge=null, runID=null, queue=[], processing=false, pending=null;
   let generation=0, count=0, error='', settingsOpen=false, opening=false, badgeSequence=0, pairing=false;
   let confirmed=new Set();
@@ -48,7 +51,9 @@ export function createScanning(plugin,isNative) {
   function panel() {
     const c=getContext();
     if(!allowed(c)) return '<section class="panel club-panel"><h2>School scanning access required</h2><p>An Admin or Staff membership and active school year are required.</p></section>';
-    return `<section class="welcome-card"><div><div class="eyebrow">EVERY LAP COUNTS</div><h2>Ready. Set. Keep moving.</h2><p>Scan QR badges with the native camera, or tap NTAG215 stickers with NFC. Both use your school’s shared lap records.</p></div></section>
+    const selector = `<nav class="club-actions scanner-actions" aria-label="Scanning mode"><button class="btn ${scanMode==='turc'?'':'outline'}" data-action="scan-mode-turc" aria-pressed="${scanMode==='turc'}">TURC</button><button class="btn ${scanMode==='walk'?'':'outline'}" data-action="scan-mode-walk" aria-pressed="${scanMode==='walk'}">Walk-a-thon</button></nav>`;
+    if(scanMode==='walk') return selector+walk.panel();
+    return `${selector}<section class="welcome-card"><div><h2>TURC lap scanning</h2><p>Scan a runner’s QR badge or tap an assigned NTAG215 sticker.</p></div></section>
     <section class="panel club-panel scanner-panel"><h2>${course?.configured ? esc(course.name) : 'Set up your course'}</h2>
     <p>${course?.configured ? `${miles(course.distance_mm)} miles per lap · ${course.cooldown_seconds} second minimum lap interval` : 'An Admin must enter the measured lap distance before scanning.'}</p>
     ${error ? `<div class="club-error" role="alert">${esc(error)}</div>` : ''}
@@ -79,16 +84,26 @@ export function createScanning(plugin,isNative) {
   }
   return {
     configure(c,get,onChange) { client=c; getContext=get; changed=onChange;
+      walk.configure(c,get,onChange);
       if(isNative) {
         plugin.addListener('scan',event=>receive(event).catch(()=>{}));
         plugin.addListener('closed',event=>{if(runID===event.runID)runID=null;});
       }
-    }, panel,loadCourse,
+    }, panel,loadCourse,async loadPanel(){if(scanMode==='walk'&&!walk.pending)await walk.load();else if(scanMode==='turc')await loadCourse();},
     clearBadge() {badgeSequence++;badge=null;},
-    reset() {generation++;badgeSequence++;queue=[];pending=null;badge=null;course=null;latest=null;count=0;confirmed=new Set();error='';settingsOpen=false;runID=null;if(isNative)plugin.close().catch(()=>{});},
-    handles(name) {return ['scan-qr','scan-nfc','scan-settings','scan-retry','scan-discard','badge','badge-replace','badge-replace-confirm','badge-scan-uid','badge-print'].includes(name);},
+    reset() {generation++;badgeSequence++;queue=[];pending=null;badge=null;course=null;latest=null;count=0;confirmed=new Set();error='';settingsOpen=false;runID=null;walk.reset();scanMode='turc';if(isNative)plugin.close().catch(()=>{});},
+    handles(name) {return ['scan-qr','scan-nfc','scan-settings','scan-retry','scan-discard','scan-mode-turc','scan-mode-walk','walk-camera','walk-select','walk-load','walk-retry','badge','badge-replace','badge-replace-confirm','badge-scan-uid','badge-print'].includes(name);},
     async handle(name,id) {
       const c=getContext(); if(!allowed(c)) throw Error('School scanning access required.');
+      if(name==='scan-mode-turc'||name==='scan-mode-walk') {
+        const next=name==='scan-mode-walk'?'walk':'turc';
+        if(next===scanMode)return;
+        if(pending||processing||walk.pending)throw Error('Finish or retry the last scan before switching modes.');
+        scanMode=next;changed(true);
+        if(next==='walk')await walk.load();else await loadCourse();
+        changed(true);return;
+      }
+      if(name.startsWith('walk-')) {if(scanMode==='walk')await walk.handle(name,id);return;}
       if(name==='scan-settings'){settingsOpen=!settingsOpen;changed(true);return;}
       if(name==='scan-retry'){if(pending){queue.push(pending);pending=null;await drain();changed();}return;}
       if(name==='scan-discard'){pending=null;error='Retry discarded. A server-committed lap remains recorded; refresh totals before rescanning.';changed();return;}
