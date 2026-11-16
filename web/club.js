@@ -442,6 +442,18 @@
   client.auth.getSession().then(({data,error}) => { if (error) { s.loading = false; s.error = errorText(error); render(); } else activate(data.session); });
   window.addEventListener('online',() => { if (s.user) refresh({background:true}); });
   window.addEventListener('turc:resume',() => { if (s.user) refresh({background:true}); });
+  window.addEventListener('turc:android-back',event=>{
+    if(!dialog.open&&s.tab==='overview'&&!s.busy)return;
+    event.preventDefault();
+    if(s.busy)return;
+    if(dialog.open){void handleAction({dataset:{action:'close'}});return;}
+    if(s.tab==='scanner'&&scanner?.inScanMode){
+      if(scanner.hasUnconfirmed)message('Retry or resolve the last scan before leaving this screen.');
+      else void scanner.handle('scan-mode-menu').catch(error=>message(errorText(error)));
+      return;
+    }
+    void navigate(s.tab==='account'?accountReturn:s.tab==='import'?'roster':'overview');
+  });
   document.addEventListener('visibilitychange',() => { if (!document.hidden && s.user) refresh({background:true}); });
   setInterval(() => { if (!document.hidden && s.user && s.tab !== 'account') refresh({background:true}); },30000);
 })();

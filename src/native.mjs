@@ -17,6 +17,11 @@ window.TURC_PLATFORM = {
   async shareCSV(name, text) { await native.shareCSV({ name, text }); },
   async attachClient(client) {
     if (!isNative) return;
+    if (Capacitor.getPlatform()==='android') {
+      await App.addListener('backButton',()=>{
+        if (window.dispatchEvent(new Event('turc:android-back',{cancelable:true}))) void App.minimizeApp();
+      });
+    }
     const update = ({ isActive }) => {
       if (isActive) {
         client.auth.startAutoRefresh();

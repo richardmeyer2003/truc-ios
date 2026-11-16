@@ -11,6 +11,9 @@ artifacts/
 *.p8
 *.mobileprovision
 *.ipa
+*.apk
+*.jks
+*.keystore
 *.xcarchive/
 .DS_Store
 ios/App/App/public/

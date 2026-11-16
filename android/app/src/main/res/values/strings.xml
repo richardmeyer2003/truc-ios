@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TURC</string>
+    <string name="title_activity_main">TURC</string>
+    <string name="package_name">org.turc.clubhouse</string>
+    <string name="custom_url_scheme">org.turc.clubhouse</string>
+</resources>

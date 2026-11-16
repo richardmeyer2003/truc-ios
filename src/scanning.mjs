@@ -63,7 +63,7 @@ export function createScanning(plugin,isNative) {
     <p>${course?.configured ? `${miles(course.distance_mm)} miles per lap · ${course.cooldown_seconds} second minimum lap interval` : 'An Admin must enter the measured lap distance before scanning.'}</p>
     ${error ? `<div class="club-error" role="alert">${esc(error)}</div>` : ''}
     ${pending ? `<div class="notice">One scan is unconfirmed. Retry before scanning more. This pending result is kept only while this app stays open.</div><div class="club-actions">${button('Retry last scan','scan-retry')}${button('Discard pending retry','scan-discard')}</div>` : ''}
-    <div class="scanner-actions">${isNative&&course?.configured&&!pending ? button('Open QR camera','scan-qr')+button('Scan NFC stickers','scan-nfc') : !isNative ? '<p>Camera and NFC scanning are available in the installed iPhone app.</p>' : ''}</div>
+    <div class="scanner-actions">${isNative&&course?.configured&&!pending ? button('Open QR camera','scan-qr')+button('Scan NFC stickers','scan-nfc') : !isNative ? '<p>Camera and NFC scanning are available in the installed TURC app.</p>' : ''}</div>
     ${latest ? `<div class="scanner-result" data-result="${latest.accepted?'counted':'rejected'}" role="status"><h3>${esc(latest.title)}</h3>${latest.student?`<p><strong>${esc(latest.student)}</strong></p>`:''}<p>${esc(latest.detail)}</p></div>` : ''}
     <p class="club-note">${count} confirmed ${count===1?'lap':'laps'} on this device. An internet connection is required.</p>
     ${c.role==='admin' ? button(settingsOpen?'Hide course settings':'Course settings','scan-settings') : ''}
@@ -95,6 +95,7 @@ export function createScanning(plugin,isNative) {
       }
     }, panel,permissions:scanAccess,loadCourse,
     get openEvents(){return walk.openEvents;},
+    get inScanMode(){return scanMode!=='menu';},
     get hasUnconfirmed(){return Boolean(pending||processing||walk.pending);},
     loadHome(){return walk.load({quiet:true});},
     async loadPanel(){if(scanMode==='walk'&&!walk.pending)await walk.load();else if(scanMode==='turc'){await loadCourse();changed(true);}},
@@ -127,7 +128,7 @@ export function createScanning(plugin,isNative) {
           if(!validContext(key))await plugin.close();
         }finally{opening=false;}return;
       }
-      if(!isNative)throw Error('Open the installed iPhone app to manage QR and NFC badges.');
+      if(!isNative)throw Error('Open the installed TURC app to manage QR and NFC badges.');
       if(name==='badge')return showBadge(id);
       if(name==='badge-replace'){
         const dialog=document.getElementById('club-dialog');dialog.innerHTML=`<h2>Replace this sticker?</h2><p>After you scan and assign a new sticker UID, the previous sticker and printed QR will stop working. Lap history stays intact. Print the updated badge after assignment.</p><div class="club-actions">${button('Scan replacement sticker','badge-replace-confirm',id)}${button('Cancel','badge',id)}</div>`;return;

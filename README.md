@@ -1,8 +1,16 @@
-# TURC for iPhone
+# TURC for iPhone and Android
 
 TURC uses the same accounts and roster as the website. Version 0.6.0 has **Home**, **Students**, and **Scan** tabs, with school selection and website management links under **Account**. Open a student to see progress and lap history or, as an Admin, to assign an NTAG215 sticker and share a printable badge. **Scan → Run Club** accepts QR badges and NFC stickers. **Scan → Walk-a-thon** accepts event bib QR codes. An Admin registers participants, prints bibs, sets the minimum lap time, and opens scanning on the website.
 
 Develop on Windows. GitHub-hosted macOS compiles the iPhone app. The workflow produces an **unsigned IPA** for the owner's existing signing/sideloading process. No Apple developer credentials, Mac computer, TestFlight, or paid build service are required to prepare the build.
+
+## Android APK
+
+The **TURC Android** GitHub Actions workflow builds an installable, debug-signed APK for Android 7 or later. Download `TURC-Android.apk` from `TURC-Android-<run number>`, then open the APK on a test phone to install it. Use the same TURC account as the website. Builds signed with different CI debug keys may require uninstalling the previous test build before updating.
+
+Android uses the same roster, permissions, and lap APIs as iPhone. Run Club can read QR badges and NTAG215 stickers. Walk-a-thon accepts event bib QR codes. A camera or NFC-capable phone is required for its respective scanning mode. Android keeps sign-in credentials in encrypted storage backed by Android Keystore. Badge PDFs and roster CSVs open in the Android share sheet.
+
+For a local build, use JDK 21, Android SDK Platform 36, and Build Tools 36.0.0. Run `pnpm install --frozen-lockfile` and `pnpm android:sync` from the repository root. In `android/`, run `gradlew.bat :app:assembleDebug` on Windows or `./gradlew :app:assembleDebug` on Linux. The APK is at `android/app/build/outputs/apk/debug/app-debug.apk`.
 
 ## First build
 
