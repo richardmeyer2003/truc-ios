@@ -31,7 +31,8 @@ input, textarea, select { font-size:16px; }
 .ios-event + .ios-event { border-top:1px solid #d8e7e2; }
 .ios-event h3 { font-size:1rem; }
 .ios-roster-tools { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 12px; }
-.ios-roster-tools .search { flex:1 1 175px; min-width:0; min-height:44px; width:auto; margin:0; background:#fdfefd; border:1px solid #b5ccc6; }
+/* Keep the roster search at 16px or larger to avoid iPhone keyboard focus zoom. */
+.ios-roster-tools .search { flex:1 1 175px; min-width:0; min-height:44px; width:auto; margin:0; font-size:max(16px,1rem); background:#fdfefd; border:1px solid #b5ccc6; }
 .ios-overflow { position:relative; }
 .ios-overflow summary { display:grid; place-items:center; min-height:44px; padding:0 10px; border-radius:15px; border:1px solid #b5ccc6; background:#f8fdfa; color:#255452; font-size:.78rem; cursor:pointer; list-style:none; }
 .ios-overflow summary::-webkit-details-marker { display:none; }
