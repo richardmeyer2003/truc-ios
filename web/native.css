@@ -6,5 +6,59 @@ input, textarea, select { font-size:16px; }
 .club-auth { margin-top:clamp(24px,6vh,64px); }
 .club-auth-footer { flex-wrap:wrap; }
 .club-toast { bottom:calc(90px + env(safe-area-inset-bottom)); }
+.club-body .club-layout { max-width:720px; margin:auto; padding:12px 20px calc(108px + env(safe-area-inset-bottom)); }
+.club-body .ios-club-header { gap:12px; padding:10px 14px; border-radius:24px; background:#f7fffd9c; -webkit-backdrop-filter:blur(20px) saturate(145%); }
+.ios-club-header .club-brand { padding:0; font-size:1.4rem; }
+.ios-club-header .club-brand svg { width:32px; height:32px; }
+.ios-club-header .btn { min-height:44px; }
+.club-body .ios-club-context { display:flex; align-items:center; flex-wrap:wrap; gap:8px 18px; margin:24px 0 15px; }
+.ios-club-context h1 { margin:0; font-size:clamp(1.85rem,8vw,2.45rem); }
+.ios-club-context p { margin-top:4px; }
+.ios-school-name { color:#385c5d; font-size:.82rem; overflow-wrap:anywhere; }
+.club-body .ios-school-picker { display:grid; gap:4px; min-width:0; max-width:100%; margin:0; color:#355f5b; font-size:.75rem; }
+.club-body .ios-school-picker select { width:auto; min-width:0; max-width:min(58vw,300px); min-height:44px; margin:0; padding:8px 12px; border-radius:18px; border:1px solid #a3beb9; background:#f8fdfa; color:#224b45; font-size:.85rem; text-overflow:ellipsis; }
+.club-body .ios-tab-bar { position:fixed; z-index:40; inset:auto 12px max(10px,env(safe-area-inset-bottom)); max-width:470px; width:auto; margin:0 auto; padding:5px; display:flex; gap:4px; border:1px solid #a8c5bf; background:#f4fcf9eb; border-radius:30px; -webkit-backdrop-filter:blur(24px) saturate(145%); backdrop-filter:blur(24px) saturate(145%); box-shadow:0 8px 26px #213d3b24; }
+.ios-tab-bar .club-tab { flex:1; display:grid; justify-items:center; align-content:center; gap:4px; padding:6px 8px; min-height:54px; border-radius:24px; font-size:.76rem; color:#255452; }
+.ios-tab-bar .club-tab svg { width:21px; height:21px; }
+.ios-tab-bar .club-tab[aria-current=page] { color:#0f4d41; background:#d4ebe4; box-shadow:none; }
+.club-body .ios-panel,.club-body .scanner-panel { background:#fdfefd; border:1px solid #c9ded8; border-radius:22px; padding:19px; margin:0 0 14px; }
+.ios-panel h2,.scanner-panel h2 { margin:0 0 10px; color:#1a4540; font-size:1.22rem; }
+.ios-today { display:flex; gap:30px; margin:12px 0 20px; }
+.ios-today div { display:grid; gap:4px; }
+.ios-today strong { font-size:1.65rem; letter-spacing:-.035em; line-height:1.1; color:#1b5148; }
+.ios-today span,.student-detail-meta { color:#45645f; font-size:.8rem; }
+.ios-event { display:grid; gap:8px; padding:12px 0; }
+.ios-event + .ios-event { border-top:1px solid #d8e7e2; }
+.ios-event h3 { font-size:1rem; }
+.ios-roster-tools { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 12px; }
+.ios-roster-tools .search { flex:1 1 175px; min-width:0; min-height:44px; width:auto; margin:0; background:#fdfefd; border:1px solid #b5ccc6; }
+.ios-overflow { position:relative; }
+.ios-overflow summary { display:grid; place-items:center; min-height:44px; padding:0 10px; border-radius:15px; border:1px solid #b5ccc6; background:#f8fdfa; color:#255452; font-size:.78rem; cursor:pointer; list-style:none; }
+.ios-overflow summary::-webkit-details-marker { display:none; }
+.ios-menu { position:absolute; inset:calc(100% + 5px) 0 auto auto; width:160px; display:grid; gap:5px; padding:6px; z-index:3; background:#fcfefd; border:1px solid #b5ccc6; border-radius:16px; box-shadow:0 6px 16px #18383520; }
+.student-list,.ios-lap-history ul { padding:0; margin:0; list-style:none; }
+.student-list { display:grid; gap:8px; }
+.student-row { width:100%; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px 12px; padding:14px 16px; border:1px solid #c9ded8; border-radius:18px; background:#fdfefd; text-align:left; color:#233f3b; }
+.student-text { display:grid; gap:2px; min-width:0; overflow-wrap:anywhere; }
+.student-text strong { font-size:.96rem; }
+.student-text small,.ios-lap-history small { color:#4b6762; font-size:.77rem; }
+.student-chevron { grid-column:2; grid-row:1/3; align-self:center; color:#2e6159; font-size:1.5rem; }
+.student-row .runner-progress,.ios-student-progress .runner-progress { display:grid; gap:2px; min-width:0; max-width:none; padding:0; background:none; color:#375e54; }
+.student-row .runner-progress progress,.ios-student-progress progress { width:100%; max-width:100%; }
+.student-empty { padding:24px 12px; color:#465f5b; }
+.ios-dialog-heading { display:flex; gap:10px; justify-content:space-between; align-items:start; }
+.ios-dialog-heading h2 { overflow-wrap:anywhere; }
+.ios-student-progress { margin:12px 0; }
+.ios-student-progress > p { margin-top:6px; color:#3e6259; font-size:.82rem; }
+.student-tools { margin:14px 0; }
+.ios-lap-history h3 { margin:14px 0 7px; }
+.ios-lap-history li { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 0; border-top:1px solid #c6ddd5; }
+.ios-lap-history small { display:block; margin-top:3px; }
+.ios-lap-history .btn,.ios-panel .ios-school-picker + .btn { margin-top:10px; }
+.ios-management { display:grid; align-items:start; justify-items:start; gap:7px; }
+.ios-management .btn { white-space:normal; }
+.club-body .club-footer { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:14px; }
+.text-action.btn { padding:2px 5px; min-height:44px; background:transparent; color:#22544d; box-shadow:none; }
 @media(prefers-reduced-motion:reduce) { *, *::before, *::after { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }
 @media(prefers-reduced-transparency:reduce) { .panel,.club-header,.club-tabs,dialog,.stat { background:#f2f7f6; backdrop-filter:none; -webkit-backdrop-filter:none; } }
+@media(prefers-reduced-transparency:reduce) { .club-body .ios-club-header,.club-body .ios-tab-bar { background:#f2f7f6; backdrop-filter:none; -webkit-backdrop-filter:none; } }

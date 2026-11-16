@@ -30,7 +30,7 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     private var nfc: TURCUIDReader?
     private var runID: String?
     private var recent: [String: Date] = [:]
-    private var awaitingWalkResult = false
+    private var awaitingResult = false
     private var backgroundObserver: NSObjectProtocol?
 
     public override func load() {
@@ -52,15 +52,14 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
             controller.onValue = { [weak self] value in self?.emit(value, source: "qr") }
             if !controller.walkathon { controller.onNFC = { [weak self] in self?.readNFC() } }
             controller.onClose = { [weak self] in self?.stop() }
-            self.scanner = controller; self.runID = id; self.recent = [:]; self.awaitingWalkResult = false
+            self.scanner = controller; self.runID = id; self.recent = [:]; self.awaitingResult = false
             controller.modalPresentationStyle = .fullScreen
             parent.present(controller, animated: true) { call.resolve(["runID": id]); if !controller.useCamera { self.readNFC() } }
         }
     }
     private func emit(_ value: String, source: String) {
-        guard let id = runID else { return }
+        guard let id = runID, !awaitingResult else { return }
         let isWalkathon = scanner?.walkathon == true
-        if isWalkathon && awaitingWalkResult { return }
         let valid: Bool
         if isWalkathon { valid = source == "qr" && validWalkBib(value) }
         else { valid = source == "nfc" ? value.range(of: "^[A-F0-9]{14}$", options: .regularExpression) != nil : validBadge(value) }
@@ -74,12 +73,12 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         recent[value] = now
         if let previous = previous, now.timeIntervalSince(previous) < 1.5 { return }
         if recent.count > 300 { recent = recent.filter { now.timeIntervalSince($0.value) < 5 } }
-        awaitingWalkResult = isWalkathon
-        scanner?.show(isWalkathon ? "Checking lap…" : "Checking badge…", detail: "Waiting for the server", success: nil)
+        awaitingResult = true
+        scanner?.show("Checking lap…", detail: "Wait for confirmation.", success: nil)
         notifyListeners("scan", data: ["runID": id, "value": value, "source": source, "eventID": UUID().uuidString, "observedAt": ISO8601DateFormatter().string(from: now)])
     }
     private func readNFC() {
-        guard nfc == nil, scanner?.walkathon != true else { return }
+        guard nfc == nil, !awaitingResult, scanner?.walkathon != true else { return }
         guard NFCTagReaderSession.readingAvailable else { scanner?.show("NFC unavailable", detail: "Check your signing method's NFC entitlement. QR is available separately.", success: false); return }
         scanner?.pauseCamera()
         let reader = TURCUIDReader()
@@ -92,7 +91,7 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         reader.begin()
     }
     private func stop() {
-        let id = runID; runID = nil; awaitingWalkResult = false
+        let id = runID; runID = nil; awaitingResult = false
         nfc?.cancel(); nfc = nil
         scanner?.shutdown(); scanner?.dismiss(animated: true); scanner = nil
         if let id = id { notifyListeners("closed", data: ["runID": id]) }
@@ -102,12 +101,18 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         DispatchQueue.main.async { [weak self] in
             guard call.getString("runID") == self?.runID else { call.resolve(); return }
             let title = String((call.getString("title") ?? "").prefix(120))
-            let detail = String((call.getString("detail") ?? "").prefix(240))
+            let student = String((call.getString("student") ?? "").prefix(160))
+            let message = String((call.getString("detail") ?? "").prefix(240))
+            let detail = [student, message].filter { !$0.isEmpty }.joined(separator: "\n")
             let accepted = call.getBool("accepted") ?? false
-            self?.awaitingWalkResult = false
+            self?.awaitingResult = call.getBool("pending") ?? false
             self?.scanner?.show(title, detail: detail, success: accepted)
             self?.nfc?.message(title + "\n" + detail)
-            if accepted { UINotificationFeedbackGenerator().notificationOccurred(.success); AudioServicesPlaySystemSound(1104) }
+            UINotificationFeedbackGenerator().notificationOccurred(accepted ? .success : .warning)
+            if accepted { AudioServicesPlaySystemSound(1104) }
+            if UIAccessibility.isVoiceOverRunning {
+                UIAccessibility.post(notification: .announcement, argument: title + ". " + detail)
+            }
             call.resolve()
         }
     }
@@ -178,31 +183,41 @@ private final class TURCQRController: UIViewController, AVCaptureMetadataOutputO
     private var preview: AVCaptureVideoPreviewLayer?
     private let titleLabel = UILabel()
     private let detailLabel = UILabel()
+    private let feedback = UIView()
     private var configured = false
     private var closed = false
     private var paused = false
     override func viewDidLoad() {
         super.viewDidLoad(); view.backgroundColor = UIColor(red: 0.11, green: 0.23, blue: 0.24, alpha: 1)
-        let top = UILabel(); top.text = school; top.font = .systemFont(ofSize: 22, weight: .bold); top.textColor = .white; top.textAlignment = .center; top.numberOfLines = 2
+        let top = UILabel()
+        top.text = "\(walkathon ? "Walk-a-thon" : "Run Club")\n\(school)"
+        top.font = UIFontMetrics(forTextStyle: .headline).scaledFont(for: .systemFont(ofSize: 17, weight: .semibold))
+        top.adjustsFontForContentSizeCategory = true
+        top.textColor = .white; top.textAlignment = .center; top.numberOfLines = 3
+        top.backgroundColor = UIColor(red: 0.10, green: 0.23, blue: 0.23, alpha: 1)
+        top.layer.cornerRadius = 16; top.clipsToBounds = true
         let done = button("Done", action: #selector(doneTapped))
-        let header = UIStackView(arrangedSubviews: [top, done]); header.spacing = 12
-        let feedback = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterialLight)); feedback.layer.cornerRadius = 28; feedback.clipsToBounds = true
-        titleLabel.font = .systemFont(ofSize: 26, weight: .bold); titleLabel.numberOfLines = 2
-        detailLabel.font = .systemFont(ofSize: 17); detailLabel.numberOfLines = 4
+        done.setContentHuggingPriority(.required, for: .horizontal)
+        let header = UIStackView(arrangedSubviews: [top, done]); header.spacing = 10
+        feedback.layer.cornerRadius = 22; feedback.clipsToBounds = true
+        titleLabel.font = UIFontMetrics(forTextStyle: .title1).scaledFont(for: .systemFont(ofSize: 29, weight: .bold))
+        titleLabel.adjustsFontForContentSizeCategory = true; titleLabel.numberOfLines = 2
+        detailLabel.font = .preferredFont(forTextStyle: .body)
+        detailLabel.adjustsFontForContentSizeCategory = true; detailLabel.numberOfLines = 5
+        detailLabel.textColor = UIColor(red: 0.13, green: 0.24, blue: 0.22, alpha: 1)
         let labels = UIStackView(arrangedSubviews: [titleLabel, detailLabel]); labels.axis = .vertical; labels.spacing = 9
-        var modeButtons = [button("Camera QR", action: #selector(cameraTapped))]
+        var modeButtons = [button("QR camera", action: #selector(cameraTapped))]
         if !walkathon { modeButtons.append(button("NFC stickers", action: #selector(nfcTapped))) }
         let modes = UIStackView(arrangedSubviews: modeButtons); modes.spacing = 12; modes.distribution = .fillEqually
         for child in [header, feedback, modes] { child.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(child) }
-        labels.translatesAutoresizingMaskIntoConstraints = false; feedback.contentView.addSubview(labels)
+        labels.translatesAutoresizingMaskIntoConstraints = false; feedback.addSubview(labels)
         NSLayoutConstraint.activate([
-            header.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20), header.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20), header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
-            modes.leadingAnchor.constraint(equalTo: header.leadingAnchor), modes.trailingAnchor.constraint(equalTo: header.trailingAnchor), modes.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -18), modes.heightAnchor.constraint(equalToConstant: 56),
+            header.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20), header.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20), header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12), header.heightAnchor.constraint(greaterThanOrEqualToConstant: 56),
+            modes.leadingAnchor.constraint(equalTo: header.leadingAnchor), modes.trailingAnchor.constraint(equalTo: header.trailingAnchor), modes.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -18), modes.heightAnchor.constraint(greaterThanOrEqualToConstant: 56),
             feedback.leadingAnchor.constraint(equalTo: header.leadingAnchor), feedback.trailingAnchor.constraint(equalTo: header.trailingAnchor), feedback.bottomAnchor.constraint(equalTo: modes.topAnchor, constant: -18),
-            labels.leadingAnchor.constraint(equalTo: feedback.contentView.leadingAnchor, constant: 22), labels.trailingAnchor.constraint(equalTo: feedback.contentView.trailingAnchor, constant: -22), labels.topAnchor.constraint(equalTo: feedback.contentView.topAnchor, constant: 22), labels.bottomAnchor.constraint(equalTo: feedback.contentView.bottomAnchor, constant: -22)
+            labels.leadingAnchor.constraint(equalTo: feedback.leadingAnchor, constant: 20), labels.trailingAnchor.constraint(equalTo: feedback.trailingAnchor, constant: -20), labels.topAnchor.constraint(equalTo: feedback.topAnchor, constant: 18), labels.bottomAnchor.constraint(equalTo: feedback.bottomAnchor, constant: -18)
         ])
-        show(walkathon ? "Ready to scan bibs" : "Ready for your runners",
-             detail: walkathon ? "Scan the QR on each Walk-a-thon bib. Wait for the lap confirmation before scanning again." : "Present a TURC QR badge or tap NFC stickers. Laps count only after the server confirms them.", success: nil)
+        show("Ready to scan", detail: walkathon ? "Point the camera at the event bib." : "Scan a QR badge or tap NFC stickers.", success: nil)
         UIApplication.shared.isIdleTimerDisabled = true
         if useCamera { startCamera() }
     }
@@ -242,6 +257,16 @@ private final class TURCQRController: UIViewController, AVCaptureMetadataOutputO
     func shutdown() { closed = true; pauseCamera(); UIApplication.shared.isIdleTimerDisabled = false }
     func show(_ title: String, detail: String, success: Bool?) {
         titleLabel.text = title; detailLabel.text = detail
-        titleLabel.textColor = success == false ? UIColor(red: 0.55, green: 0.22, blue: 0.21, alpha: 1) : UIColor(red: 0.13, green: 0.40, blue: 0.37, alpha: 1)
+        switch success {
+        case true?:
+            titleLabel.textColor = UIColor(red: 0.10, green: 0.34, blue: 0.23, alpha: 1)
+            feedback.backgroundColor = UIColor(red: 0.89, green: 0.97, blue: 0.91, alpha: 1)
+        case false?:
+            titleLabel.textColor = UIColor(red: 0.47, green: 0.23, blue: 0.04, alpha: 1)
+            feedback.backgroundColor = UIColor(red: 1, green: 0.95, blue: 0.84, alpha: 1)
+        default:
+            titleLabel.textColor = UIColor(red: 0.11, green: 0.28, blue: 0.25, alpha: 1)
+            feedback.backgroundColor = UIColor(red: 0.96, green: 0.98, blue: 0.97, alpha: 1)
+        }
     }
 }

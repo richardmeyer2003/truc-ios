@@ -15,8 +15,9 @@ export function scanFeedback(result) {
     const total=result.totals?.year_mm;
     const milestone=total!=null&&Number.isFinite(Number(total)) ? progress.milestone(total) : null;
     const next=milestone ? (milestone.next ? `${progress.remaining(milestone.remaining)} mi to next milestone` : 'All milestones reached') : 'Next milestone unavailable';
-    return {accepted:true,title:result.name,detail:`Today ${miles(result.totals?.today_mm)} mi · ${next}`};
+    return {accepted:true,title:'Lap counted',student:result.name,detail:`Today ${miles(result.totals?.today_mm)} mi · ${next}`};
   }
-  const reasons = {cooldown:'Too soon for another lap',unknown_or_replaced_badge:'Unknown or replaced badge',inactive_runner:'Runner is not actively enrolled',course_not_configured:'Ask an Admin to configure the course',no_active_year:'No active school year for today',clock_or_connection:'Check your clock and connection; scan again'};
+  const reasons = {cooldown:'Too soon',unknown_or_replaced_badge:'Unknown or replaced badge',inactive_runner:'Student is not actively enrolled',course_not_configured:'Course needs setup',no_active_year:'No active school year',clock_or_connection:'Check the clock and connection'};
+  if (result.reason==='cooldown' && Number.isFinite(result.remaining_seconds)) return {accepted:false,title:'Too soon',detail:`${result.remaining_seconds}s remaining. No lap added.`};
   return {accepted:false,title:reasons[result.reason] || 'Lap was not recorded',detail:'No lap added.'};
 }

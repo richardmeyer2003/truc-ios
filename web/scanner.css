@@ -8,3 +8,14 @@
 .badge-qr { display:block; width:min(100%,300px); margin:20px auto; border-radius:18px; }
 .club-tabs:has([data-tab=scanner]) .club-tab { padding-left:5px; padding-right:5px; }
 @media(max-width:480px) { .scanner-actions {grid-template-columns:1fr;} .club-tab {font-size:10px;} }
+.scan-choices { display:grid; gap:10px; }
+.scan-choice { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:18px; min-height:72px; border:1px solid #a7c9c0; border-radius:20px; background:#fdfefd; color:#1e4f46; text-align:left; }
+.scan-choice strong { display:block; font-size:1.15rem; }
+.scan-choice small { display:block; margin-top:3px; color:#4d6761; font-size:.82rem; }
+.scan-choice > span:last-child { font-size:1.5rem; }
+.scan-back { margin-bottom:12px; }
+.scan-back .btn { min-height:44px; padding:3px 6px; background:transparent; color:#21574c; box-shadow:none; }
+.scan-course-name { margin-top:4px; }
+.scanner-panel .scanner-result { background:#f3f8f6; border:1px solid #aecdc2; }
+.scanner-panel .scanner-result[data-result=counted] { background:#dff2e7; color:#164e39; }
+.scanner-panel .scanner-result[data-result=rejected] { background:#faf0da; color:#633605; border-color:#d0b77b; }

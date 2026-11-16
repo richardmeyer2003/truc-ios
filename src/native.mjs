@@ -31,7 +31,7 @@ document.addEventListener('click', event => {
   const link = event.target.closest('a[data-website]');
   if (!isNative || !link) return;
   event.preventDefault();
-  native.openWebsite().catch(() => {
+  native.openWebsite({route:link.dataset.website||'home',school:link.dataset.school,event:link.dataset.event}).catch(() => {
     const status = document.getElementById('club-status');
     status.textContent = 'The website could not open. Please try again.'; status.hidden = false;
   });

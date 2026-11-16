@@ -63,7 +63,7 @@ test('changed data updates quietly, preserving tab, search and scroll',async()=>
   h.handlers.input({target:{id:'club-search',value:'Maya'}}); h.sandbox.scrollX=12;h.sandbox.scrollY=410;
   h.data.turc_enrollments[0].classroom='Reed';h.data.turc_enrollments[0].row_version++;
   const before=h.writes.length; await h.timer();
-  assert.equal(h.writes.length,before+1); assert.match(h.root.innerHTML,/School roster/); assert.match(h.root.innerHTML,/value="Maya"/);
+  assert.equal(h.writes.length,before+1); assert.match(h.root.innerHTML,/<h1>Students<\/h1>/); assert.match(h.root.innerHTML,/value="Maya"/);
   assert.match(h.root.innerHTML,/Reed/);assert(!h.writes.at(-1).includes('Opening your club…'));
   assert.equal(h.sandbox.scrollX,12);assert.equal(h.sandbox.scrollY,410);
 });
@@ -109,7 +109,7 @@ test('revoked access is applied even if typing begins during the request',async(
 });
 test('a downgraded role clears previous privileged data even if the roster request fails',async()=>{
   const h=await setup();await h.click('tab',{tab:'roster'});h.data.turc_memberships[0].role='staff';h.control.networkError=true;
-  await h.timer();assert(!h.root.innerHTML.includes('Maya'));assert(!h.root.innerHTML.includes('Add runner'));assert.match(h.sync.textContent,/Update paused/);
+  await h.timer();assert(!h.root.innerHTML.includes('Maya'));assert(!h.root.innerHTML.includes('Add student'));assert.match(h.sync.textContent,/Update paused/);
 });
 
 test('school-year progress appears beside names and refreshes when mileage changes',async()=>{

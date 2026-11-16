@@ -12,7 +12,9 @@ async function setup() {
     async feedback(result) { feedback.push(result); }
   };
   const scanner=createWalkScanning(plugin,true);
-  const ctx={user:{id:'staff'},school:{id:'school'},role:'staff'};
+  const ctx={user:{id:'staff'},school:{id:'school'},role:'staff',memberships:[
+    {user_id:'staff',school_id:'school',role:'staff',active:true,can_scan_walkathon:true,can_view_walkathon:true}
+  ]};
   const open={id:'open-event',name:'Fictional Walk-a-thon',status:'open',min_lap_seconds:60};
   scanner.configure({async rpc(name,args) {
     if(name==='turc_walk_events')return {data:{events:[{...open,id:'draft',status:'draft'},open]}};
@@ -42,5 +44,14 @@ test('retry after a lost Walk-a-thon response sends the identical request',async
   const h=await setup();h.results.push(Error('Lost response'));h.emit();await settle();
   assert.equal(h.scanner.pending,true);assert.match(h.scanner.panel(),/Retry last scan/);
   h.results.push({accepted:true,name:'Sally S.',laps:2,replayed:true});await h.scanner.handle('walk-retry');
-  assert.deepEqual(h.calls[0],h.calls[1]);assert.match(h.scanner.panel(),/Lap 2 counted/);assert.equal(h.scanner.pending,false);
+  assert.deepEqual(h.calls[0],h.calls[1]);assert.match(h.scanner.panel(),/Lap counted/);assert.match(h.scanner.panel(),/2 event laps/);assert.equal(h.scanner.pending,false);
+});
+
+test('leaderboard-only access can load open events but cannot start the scanner',async()=>{
+  const h=await setup();
+  h.ctx.memberships[0].can_scan_walkathon=false;
+  h.scanner.reset();await h.scanner.load();
+  assert.equal(h.scanner.openEvents[0].id,'open-event');
+  await assert.rejects(h.scanner.handle('walk-camera'),/scanning is unavailable/);
+  h.emit();await settle();assert.equal(h.calls.length,0);
 });

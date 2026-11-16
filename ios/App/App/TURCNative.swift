@@ -75,7 +75,28 @@ public final class TURCNativePlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func openWebsite(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
-            guard let url = URL(string: "https://turc-school-run-club.richer2003.chatgpt.site/club") else {
+            var destination = URLComponents()
+            destination.scheme = "https"
+            destination.host = "turc-school-run-club.richer2003.chatgpt.site"
+            destination.path = "/club"
+            let school = call.getString("school").flatMap { UUID(uuidString: $0) }?.uuidString.lowercased()
+            switch call.getString("route") ?? "home" {
+            case "home": break
+            case "schools": destination.fragment = "schools"
+            case "accounts": destination.fragment = "accounts"
+            case "walkathon":
+                destination.path = "/walkathon"
+                if let school { destination.queryItems = [URLQueryItem(name: "school", value: school)] }
+            case "leaderboard":
+                guard let school, let event = call.getString("event").flatMap({ UUID(uuidString: $0) }) else {
+                    call.reject("Select a Walk-a-thon first"); return
+                }
+                destination.path = "/walkathon"
+                destination.queryItems = [URLQueryItem(name: "display", value: "1"), URLQueryItem(name: "school", value: school),
+                                          URLQueryItem(name: "event", value: event.uuidString.lowercased())]
+            default: call.reject("Unknown website destination"); return
+            }
+            guard let url = destination.url else {
                 call.reject("Website address is unavailable"); return
             }
             UIApplication.shared.open(url) { opened in
@@ -87,7 +108,7 @@ public final class TURCNativePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func shareCSV(_ call: CAPPluginCall) {
         guard let text = call.getString("text"), text.utf8.count <= 10_485_760,
               let name = call.getString("name"),
-              ["turc-roster.csv", "turc-fictional-roster.csv"].contains(name) else {
+              ["turc-roster.csv", "turc-roster-example.csv"].contains(name) else {
             call.reject("Invalid CSV export"); return
         }
         DispatchQueue.main.async { [weak self] in

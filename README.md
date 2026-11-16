@@ -1,6 +1,6 @@
 # TURC for iPhone
 
-TURC uses read-only NTAG215 factory UID assignment, printable student badges with QR codes, native camera/NFC scanning, and shared online lap records. It uses the existing TURC accounts and roster. Version 0.5.0 adds **Scan → Walk-a-thon** for QR-only event bibs. An Admin registers participants, prints bibs, sets the minimum lap time, and opens the event on the website. Walk-a-thon laps update the event leaderboard without adding TURC mileage.
+TURC uses the same accounts and roster as the website. Version 0.6.0 has **Home**, **Students**, and **Scan** tabs, with school selection and website management links under **Account**. Open a student to see progress and lap history or, as an Admin, to assign an NTAG215 sticker and share a printable badge. **Scan → Run Club** accepts QR badges and NFC stickers. **Scan → Walk-a-thon** accepts event bib QR codes. An Admin registers participants, prints bibs, sets the minimum lap time, and opens scanning on the website.
 
 Develop on Windows. GitHub-hosted macOS compiles the iPhone app. The workflow produces an **unsigned IPA** for the owner's existing signing/sideloading process. No Apple developer credentials, Mac computer, TestFlight, or paid build service are required to prepare the build.
 

@@ -5,19 +5,30 @@
   const dialog = document.getElementById('club-dialog');
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
   const brand = '<svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="12" fill="currentColor"/><path d="M11 25 20 12l8 1-8 13-8 1m9-7h9" stroke="#e4edba" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>TURC</span>';
+  const website = 'https://turc-school-run-club.richer2003.chatgpt.site';
+  const scanner = window.TURC_SCANNER;
+  const permissions = state => scanner?.permissions(state)||{run:state.role==='admin',walk:state.role==='admin',leaderboard:state.role==='admin'};
+  const membershipFields = 'id,user_id,district_id,school_id,role,active,can_scan_run_club,can_scan_walkathon,can_view_walkathon';
+  const tabIcons = {
+    overview:'<path d="m3 11 9-8 9 8M5 10v10h5v-6h4v6h5V10"/>',
+    roster:'<path d="M5 20h14v-2a5 5 0 0 0-5-5h-4a5 5 0 0 0-5 5v2Z"/><circle cx="12" cy="7" r="3"/>',
+    scanner:'<path d="M9 4H4v5m11-5h5v5m0 6v5h-5m-6 0H4v-5M7 12h10"/>'
+  };
   const s = { user:null, account:null, memberships:[], schools:[], years:[], students:[], school:null, year:null, role:null,
     tab:'overview', loading:true, error:'', syncError:'', updated:null, parsed:null, mapping:null, preview:null, importErrors:[], fileName:'', search:'', busy:false };
   let epoch = 0, toastTimer, signInPending = false, refreshing = false, sessionRemovalPending = false;
+  let runnerView = null, accountReturn = 'overview';
   const action = (label, name, cls = '', extra = '') => `<button type="button" class="btn ${cls}" data-action="${name}" ${extra}>${label}</button>`;
   function message(text) { const el = document.getElementById('club-status'); el.textContent = text; el.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 5500); }
   function errorText(error) {
-    if (!navigator.onLine || /Failed to fetch|NetworkError|Load failed/i.test(error?.message || '')) return 'Connection unavailable. Your roster has not been changed. Reconnect and try again.';
+    if (!navigator.onLine || /Failed to fetch|NetworkError|Load failed/i.test(error?.message || '')) return 'Connection unavailable. Reconnect and try again.';
     if (error?.code === '42501') return 'Your account does not have access to this operation. Refresh your club or contact your administrator.';
     if (error?.code === '40001') return 'The roster or school year changed after your preview. Refresh and create a new preview.';
     if (/Invalid login credentials/i.test(error?.message || '')) return 'Email or password was not recognized. Use your TURC app account, which is separate from the Supabase dashboard.';
     return error?.message || 'Something went wrong. Please try again.';
   }
   function roleFor(school, memberships = s.memberships, user = s.user) {
+    if (!school.active) return null;
     const own = memberships.filter(m => m.user_id === user.id && m.active);
     if (own.some(m => m.role === 'admin' && (m.school_id === school.id || (!m.school_id && m.district_id === school.district_id)))) return 'admin';
     if (own.some(m => m.role === 'staff' && m.school_id === school.id)) return 'staff';
@@ -26,7 +37,7 @@
   }
   function resetImport() { s.parsed = null; s.mapping = null; s.preview = null; s.importErrors = []; s.fileName = ''; }
   function clearPrivateState() {
-    window.TURC_SCANNER?.reset();
+    scanner?.reset(); runnerView=null; accountReturn='overview';
     epoch++; Object.assign(s, { user:null, account:null, memberships:[], schools:[], years:[], students:[], school:null, year:null, role:null,
       tab:'overview', loading:false, error:'', syncError:'', updated:null, search:'', busy:false }); resetImport();
     if (dialog.open) dialog.close(); dialog.innerHTML = '';
@@ -46,7 +57,7 @@
       ...(platform?.authStorage ? {storage:platform.authStorage} : {}) }
   });
   platform?.attachClient(client).catch(() => message('Automatic reconnect paused. Use Refresh to update your roster.'));
-  window.TURC_SCANNER?.configure(client,()=>s,(force=false)=>{ if(s.tab==='scanner'&&(force||canRefresh()))renderQuietly(); });
+  scanner?.configure(client,()=>s,(force=false)=>{ if(['overview','scanner'].includes(s.tab)&&(force||canRefresh()))renderQuietly(); });
   async function rows(queryFactory) {
     let result = [], start = 0;
     while (true) {
@@ -64,7 +75,7 @@
       if (token !== epoch) return; s.user = verified.user;
       const [accounts, memberships, schools] = await Promise.all([
         client.from('turc_accounts').select('user_id,display_name,active').eq('user_id',s.user.id),
-        rows(() => client.from('turc_memberships').select('id,user_id,district_id,school_id,role,active').eq('user_id',s.user.id).order('id')),
+        rows(() => client.from('turc_memberships').select(membershipFields).eq('user_id',s.user.id).order('id')),
         rows(() => client.from('turc_schools').select('id,district_id,name,timezone,active').order('name').order('id'))
       ]);
       if (accounts.error) throw accounts.error;
@@ -76,6 +87,7 @@
       s.students = []; s.year = null; s.years = []; s.role = s.school ? roleFor(s.school) : null;
       if (s.school) await fetchRoster(token);
       if (token !== epoch) return; s.loading = false; render(); if (firstOpen) window.scrollTo(0,0);
+      if(s.tab==='overview')void scanner?.loadHome();
     } catch (error) { if (token !== epoch) return; s.loading = false; s.students = []; s.error = errorText(error); render(); }
   }
   async function readRoster(school) {
@@ -128,7 +140,7 @@
       if (!verified.user || verified.user.id !== s.user.id) { clearPrivateState(); render(); return; }
       const [accounts,memberships,allSchools] = await Promise.all([
         client.from('turc_accounts').select('user_id,display_name,active').eq('user_id',verified.user.id),
-        rows(() => client.from('turc_memberships').select('id,user_id,district_id,school_id,role,active').eq('user_id',verified.user.id).order('id')),
+        rows(() => client.from('turc_memberships').select(membershipFields).eq('user_id',verified.user.id).order('id')),
         rows(() => client.from('turc_schools').select('id,district_id,name,timezone,active').order('name').order('id'))
       ]);
       if (accounts.error) throw accounts.error;
@@ -137,9 +149,11 @@
       const schools = allSchools.filter(school => roleFor(school,memberships,verified.user));
       const school = schools.find(x => x.id === s.school?.id) || schools[0] || null;
       const role = school ? roleFor(school,memberships,verified.user) : null;
-      const scopeChanged = school?.id !== s.school?.id || role !== s.role || !account;
+      const oldAccess=permissions(s),newAccess=permissions({user:verified.user,school,role,memberships});
+      const scanRevoked=Object.keys(oldAccess).some(key=>oldAccess[key]&&!newAccess[key]);
+      const scopeChanged = school?.id !== s.school?.id || role !== s.role || !account || scanRevoked;
       if (scopeChanged) {
-        window.TURC_SCANNER?.reset();
+        scanner?.reset(); runnerView=null;
         resetImport(); s.search = ''; if (dialog.open) dialog.close(); dialog.innerHTML = '';
         Object.assign(s,{user:verified.user,account,memberships,schools,school,role,years:[],year:null,students:[]});
         renderQuietly();
@@ -150,12 +164,13 @@
       // Scope revocation is applied immediately; ordinary updates wait.
       if (!scopeChanged && !canRefresh()) return;
       const next = {user:verified.user,account,memberships,schools,school,role,...roster};
-      const visible = value => JSON.stringify({account:value.account,schools:value.schools,school:value.school,role:value.role,
+      const visible = value => JSON.stringify({account:value.account,schools:value.schools,school:value.school,role:value.role,access:permissions(value),
         years:value.years,year:value.year,students:value.students});
       const changed = visible(next) !== visible(s);
       Object.assign(s,next); s.updated = new Date(); s.syncError = '';
       if (school) sessionStorage.setItem('turc-school',school.id);
       if (changed || scopeChanged) renderQuietly(); else updateSyncStatus();
+      if(s.tab==='overview')void scanner?.loadHome();
     } catch (error) {
       if (token !== epoch) return;
       if ([401,403].includes(error?.status) || error?.code === '42501' || error?.name === 'AuthSessionMissingError') {
@@ -166,14 +181,14 @@
     } finally { refreshing = false; }
   }
   function renderAuth() {
-    root.innerHTML = `<main class="club-auth"><a class="club-brand" href="/">${brand}</a><section class="panel"><div class="eyebrow">YOUR SCHOOL CLUBHOUSE</div>
+    root.innerHTML = `<main class="club-auth"><a class="club-brand" href="/">${brand}</a><section class="panel">
       <h1>A little movement.<br>A shared beginning.</h1><p>Sign in to your school’s connected roster. Your runners stay with your club, across devices.</p>
       ${s.error ? `<div class="club-error" role="alert">${esc(s.error)}</div>` : ''}
       ${sessionRemovalPending ? `<div class="club-actions">${action('Retry sign-out','signout','outline')}</div>` : ''}
       <form id="club-login"><label>Email address<input name="email" type="email" autocomplete="username" required maxlength="254"></label>
       <label>Password<input name="password" type="password" autocomplete="current-password" required></label><button class="btn" type="submit">Sign in to your club →</button></form>
-      <div class="club-note">Use the TURC account created by your administrator. Supabase and GitHub dashboard accounts do not automatically sign you into TURC.</div></section>
-      <div class="club-auth-footer"><a data-website href="https://turc-school-run-club.richer2003.chatgpt.site/club" target="_blank" rel="noopener noreferrer">Open TURC website ↗</a></div><div class="club-note">Proof of concept · Fictional student records only.</div></main>`;
+      <div class="club-note">Need an account? Contact your school Admin.</div></section>
+      <div class="club-auth-footer"><a data-website="home" href="${website}/club" target="_blank" rel="noopener noreferrer">Open TURC website ↗</a></div></main>`;
   }
   function render() {
     root.setAttribute('aria-busy',String(s.loading));
@@ -185,42 +200,65 @@
         ${s.error ? `<div class="club-error" role="alert">${esc(s.error)}</div>` : ''}<div class="club-actions">${action('Check my access','refresh')}${action('Sign out','signout','outline')}</div></section></main>`; return;
     }
     if (s.role !== 'admin' && s.tab === 'import') s.tab = 'roster';
-    if (!['admin','staff'].includes(s.role) && s.tab === 'scanner') s.tab = 'roster';
-    const tabs = [['overview',s.role === 'parent' ? 'My club' : 'Overview'],['roster',s.role === 'parent' ? 'My runners' : 'Runners'],...(['admin','staff'].includes(s.role) ? [['scanner','Scan']] : []),...(s.role === 'admin' ? [['import','Import']] : []),['account','Account']];
-    root.innerHTML = `<div class="club-layout"><header class="club-header"><a class="club-brand" href="/">${brand}</a><div class="club-account"><div><b>${esc(s.account.display_name)}</b><small>${s.role === 'admin' ? 'Administrator' : s.role === 'staff' ? 'School staff' : 'Parent / family'}</small></div>${action('Sign out','signout','outline')}</div></header>
-      <div class="club-context"><div><div class="eyebrow">EVERY RUNNER BELONGS</div><h1>${s.tab === 'roster' ? (s.role === 'parent' ? 'Your little runners.' : 'A place for every runner.') : s.tab === 'import' ? 'A fresh start, together.' : s.tab === 'account' ? 'Your club. Your account.' : 'Welcome to your club.'}</h1><p>${esc(s.school.name)} · ${s.year ? esc(s.year.label) : 'No active school year'}</p></div>
-      <label>School<select id="club-school" aria-label="School">${s.schools.map(x => `<option value="${esc(x.id)}" ${x.id === s.school.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label></div>
-      <nav class="club-tabs" aria-label="Club navigation">${tabs.map(([id,label]) => `<button class="club-tab" data-action="tab" data-tab="${id}" ${s.tab === id ? 'aria-current="page"' : ''}>${label}</button>`).join('')}</nav>
-      ${s.error ? `<div class="club-error" role="alert">${esc(s.error)}</div>` : ''}${s.tab === 'overview' ? overview() : s.tab === 'roster' ? roster() : s.tab === 'import' ? importView() : s.tab === 'scanner' ? (window.TURC_SCANNER?.panel() || '') : accountView()}
-      <footer class="club-footer"><span>Connected prototype · Fictional students only<br>Native QR + NFC scanning · Shared school lap records.</span><span><span id="club-sync" role="status">${esc(syncText())}</span> ${action('Refresh','refresh','outline')}</span></footer></div>`;
+    const access=permissions(s),canScan=access.run||access.walk;
+    if (!canScan && s.tab === 'scanner') s.tab = 'roster';
+    const tabs = [['overview','Home'],['roster','Students'],...(canScan?[['scanner','Scan']]:[])];
+    const titles={overview:'Home',roster:'Students',import:'Import roster',account:'Account',scanner:'Scan'};
+    const views={overview,roster,import:importView,account:accountView,scanner:()=>scanner?.panel()||''};
+    const activeTab=s.tab==='import'?'roster':s.tab;
+    root.innerHTML = `<div class="club-layout"><header class="club-header ios-club-header"><button type="button" class="club-brand" data-action="tab" data-tab="overview" aria-label="TURC Home">${brand}</button>${action('Account','open-account','outline',s.tab==='account'?'aria-current="page"':'')}</header>
+      <main class="ios-main">
+      ${s.tab==='import'?action('‹ Students','open-roster','text-action'):s.tab==='account'?action('‹ Back','account-back','text-action'):''}
+      <div class="club-context ios-club-context"><div><h1>${titles[s.tab]}</h1>${s.tab==='roster'?`<p>${esc(s.year?.label||'No active school year')}</p>`:''}</div>
+      ${s.tab==='account'?'':s.schools.length>1?schoolPicker():`<span class="ios-school-name">${esc(s.school.name)}</span>`}</div>
+      ${s.error ? `<div class="club-error" role="alert">${esc(s.error)}</div>` : ''}${views[s.tab]()}
+      <footer class="club-footer"><span id="club-sync" role="status">${esc(syncText())}</span>${action('Refresh','refresh','outline')}</footer></main>
+      <nav class="club-tabs ios-tab-bar" aria-label="Club navigation">${tabs.map(([id,label]) => `<button type="button" class="club-tab" data-action="tab" data-tab="${id}" ${activeTab===id?'aria-current="page"':''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${tabIcons[id]}</svg>${label}</button>`).join('')}</nav></div>`;
     if (s.busy) root.querySelectorAll('button,input,select').forEach(el => { el.disabled = true; });
   }
   function overview() {
-    const active = s.students.filter(x => x.active).length, classrooms = new Set(s.students.map(x => x.enrollment?.classroom).filter(Boolean)).size;
-    return `<section class="welcome-card"><div><div class="eyebrow">A SCHOOL OF POSSIBILITIES</div><h2>${s.role === 'parent' ? 'Every little step has a cheering section.' : 'Your runners, one shared roster.'}</h2><p>${s.role === 'admin' ? 'Bring your fictional school roster into the club. Review changes before anything is saved.' : s.role === 'parent' ? 'See the runners linked to your account. Their school history stays together.' : 'Your assigned school’s active runners are ready to view on this device.'}</p></div>${action(s.role === 'admin' ? 'Import your roster →' : 'Meet your runners →',s.role === 'admin' ? 'open-import' : 'open-roster','light')}</section>
-      <div class="club-stats"><section class="stat"><div class="stat-label">${s.role === 'parent' ? 'Linked runners' : 'Active runners'}</div><strong>${active}</strong><small>From your shared school roster</small></section><section class="stat"><div class="stat-label">Classrooms</div><strong>${classrooms}</strong><small>In the active school year</small></section><section class="stat"><div class="stat-label">School year</div><strong style="font-size:25px">${s.year ? esc(s.year.label) : 'Not set'}</strong><small>Year-specific enrollment records</small></section></div>
-      <section class="panel club-panel"><h2>One club, across your devices.</h2><p>Roster changes are saved centrally. Open TURC on another device with the same account to see the same runners.</p><div class="notice">Scan QR badges or NTAG215 stickers in the app. Runners’ school-year mileage and progress to their next milestone appear beside their names.</div></section>`;
+    if(s.role==='parent')return `<section class="panel club-panel ios-panel"><h2>Your students</h2>${s.students.length?`<ul class="student-list">${studentRows(s.students)}</ul>`:'<p>Ask your school Admin to link a student to this account.</p>'}</section>`;
+    const access=permissions(s),events=scanner?.openEvents||[];
+    const total=field=>s.students.reduce((sum,x)=>sum+Number(x.progress?.[field]||0),0);
+    return `<section class="panel club-panel ios-panel ios-home-run"><h2>Run Club today</h2><div class="ios-today"><div><strong>${total('today_laps')}</strong><span>Laps</span></div><div><strong>${TurcProgress.miles(total('today_mm'))}</strong><span>Miles</span></div></div>
+      ${access.run?action('Scan Run Club','home-run'):''}</section>
+      ${(access.walk||access.leaderboard)&&events.length?`<section class="panel club-panel ios-panel"><h2>Walk-a-thon</h2>${events.map(event=>`<article class="ios-event"><h3>${esc(event.name)}</h3><div class="club-actions">${access.walk?action('Scan bibs','home-walk','',recordId(event.id)):''}${access.leaderboard?websiteLink('Leaderboard','leaderboard',`/walkathon?display=1&school=${encodeURIComponent(s.school.id)}&event=${encodeURIComponent(event.id)}`,event.id):''}</div></article>`).join('')}</section>`:''}`;
   }
-  function runnerProgress(student) {
-    const total=student.progress?.year_mm, p=window.TurcProgress;
-    if (!s.year) return '<span class="runner-progress">No active school year</span>';
+  const recordId=id=>`data-id="${esc(id)}"`;
+  function schoolPicker() {
+    return `<label class="ios-school-picker">School<select id="club-school" aria-label="School">${s.schools.map(x=>`<option value="${esc(x.id)}" ${x.id===s.school.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label>`;
+  }
+  function websiteLink(label,route,path,event='') {
+    return `<a class="btn outline" data-website="${route}" data-event="${esc(event)}" data-school="${esc(s.school?.id)}" href="${website}${esc(path)}" target="_blank" rel="noopener noreferrer">${label} ↗</a>`;
+  }
+  function runnerProgress(student,period='year',progress=student.progress) {
+    const total=progress?.[period+'_mm'], p=window.TurcProgress;
+    if (period==='year'&&!s.year) return '<span class="runner-progress">No active school year</span>';
     if (total==null || !Number.isFinite(Number(total))) return '<span class="runner-progress">Progress unavailable</span>';
     const m=p.milestone(total);
-    return `<div class="runner-progress"><b>${p.miles(total)} mi this year</b><span>${m.next ? `${p.remaining(m.remaining)} mi to ${esc(m.next.label)}` : 'All milestones reached'}</span><progress max="100" value="${m.percent}" aria-label="${esc(student.first_name+' '+student.last_name)}: progress to next milestone">${m.percent}%</progress></div>`;
+    return `<span class="runner-progress"><b>${p.miles(total)} mi ${period==='year'?'this year':'lifetime'}</b><span>${m.next ? `${p.remaining(m.remaining)} mi to ${esc(m.next.label)}` : 'All milestones reached'}</span><progress max="100" value="${m.percent}" aria-label="${esc(student.first_name+' '+student.last_name)} progress to next milestone">${m.percent}%</progress></span>`;
+  }
+  const gradeLabel=grade=>grade&&(/^\d+$/.test(grade)?`Grade ${grade}`:grade);
+  function studentRows(students) {
+    return students.map(x=>{
+      const grade=x.enrollment?.grade;
+      const info=[gradeLabel(grade),x.enrollment?.classroom,!x.active&&'Archived'].filter(Boolean).join(' · ');
+      return `<li><button type="button" class="student-row" data-action="detail" ${recordId(x.id)}><span class="student-text"><strong>${esc(x.first_name+' '+x.last_name)}</strong>${info?`<small>${esc(info)}</small>`:''}</span><span aria-hidden="true" class="student-chevron">›</span>${runnerProgress(x)}</button></li>`;
+    }).join('');
   }
   function rosterRows() {
-    const q = s.search.toLowerCase(); const list = s.students.filter(x => [x.first_name,x.last_name,x.external_student_id,x.enrollment?.grade,x.enrollment?.classroom].join(' ').toLowerCase().includes(q));
-    return list.map(x => `<tr><td><div class="runner-name-progress"><div class="club-person"><span class="avatar">${esc(x.first_name[0]+x.last_name[0])}</span><div><b>${esc(x.first_name+' '+x.last_name)}</b><small>${esc(x.external_student_id)}</small></div></div>${runnerProgress(x)}</div></td><td>${esc(x.enrollment?.grade || '—')}</td><td>${esc(x.enrollment?.classroom || '—')}</td><td><span class="chip ${x.active ? '' : 'gray'}">${x.active ? 'Active' : 'Archived'}</span></td><td>${action('View','detail','outline',`data-id="${esc(x.id)}"`)}</td></tr>`).join('') || '<tr><td colspan="5" class="club-empty">No runners match this search.</td></tr>';
+    const q=s.search.trim().toLowerCase();
+    const list=s.students.filter(x=>[x.first_name,x.last_name,x.external_student_id,x.enrollment?.grade,x.enrollment?.classroom].join(' ').toLowerCase().includes(q));
+    return studentRows(list)||'<li class="student-empty">No students match this search.</li>';
   }
   function roster() {
-    return `<section class="panel club-panel"><div class="club-section-title"><div><h2>${s.role === 'parent' ? 'Your runners' : 'School roster'}</h2><p class="club-note">${s.role === 'parent' ? 'Only children linked to your account appear here.' : 'Student IDs stay consistent as runners move through school years.'}</p></div>${s.role === 'admin' ? `<div class="club-actions">${action('Add runner','add')}${action('Export CSV','export','outline')}</div>` : ''}</div>
-      <div class="toolbar"><input id="club-search" class="search" aria-label="Search runners" placeholder="Search runners or classrooms" value="${esc(s.search)}"><div class="club-counter">${s.students.length} authorized runner${s.students.length === 1 ? '' : 's'}</div></div>
-      ${s.students.length ? `<div class="table-wrap"><table class="club-table club-roster-table"><thead><tr><th>RUNNER / ID</th><th>GRADE</th><th>CLASSROOM</th><th>STATUS</th><th></th></tr></thead><tbody id="club-roster-body">${rosterRows()}</tbody></table></div>` : `<div class="club-empty"><h2>${s.role === 'parent' ? 'A runner to cheer for.' : 'Your first runners start here.'}</h2><p>${s.role === 'parent' ? 'Ask your school administrator to link your fictional child’s profile.' : 'No student records are available for this school yet.'}</p>${s.role === 'admin' ? action('Import a fictional roster','open-import') : ''}</div>`}</section>`;
+    return `<section class="ios-roster"><div class="ios-roster-tools"><input id="club-search" class="search" type="search" aria-label="Search students" placeholder="Search students or classrooms" value="${esc(s.search)}">${s.role==='admin'?`<details class="ios-overflow"><summary>Roster tools</summary><div class="ios-menu">${action('Add student','add','outline')}${action('Import roster','open-import','outline')}${action('Export CSV','export','outline')}</div></details>`:''}</div>
+      ${s.students.length?`<ul class="student-list" id="club-roster-body">${rosterRows()}</ul>`:`<div class="panel club-empty"><h2>${s.role==='parent'?'No linked students':'No students yet'}</h2><p>${s.role==='parent'?'Ask your school Admin to link a student to this account.':'Add a student or import a roster to get started.'}</p>${s.role==='admin'?action('Import roster','open-import'):''}</div>`}</section>`;
   }
   function importView() {
     if (!s.year) return '<section class="panel club-panel"><h2>Set up your school year first.</h2><p>An active school year is required before importing students. Ask your administrator to complete school setup.</p></section>';
     const fields = [['student_id','Student ID *'],['first_name','First name *'],['last_name','Last name *'],['grade','Grade'],['classroom','Classroom / teacher']];
-    let body = `<div class="club-upload"><label for="club-file">Choose your fictional student CSV</label><input id="club-file" type="file" accept=".csv,text/csv"><p class="club-note">Up to 1,000 students · 1 MB maximum · Student ID, First Name, Last Name required</p></div>${action('Download example CSV','sample','outline')}`;
+    let body = `<div class="club-upload"><label for="club-file">Choose a student roster CSV</label><input id="club-file" type="file" accept=".csv,text/csv"><p class="club-note">Up to 1,000 students · 1 MB maximum · Student ID, First Name, Last Name required</p></div>${action('Download example CSV','sample','outline')}`;
     if (s.parsed && !s.preview) body = `<div class="club-summary"><span class="chip">${esc(s.fileName)}</span><span class="chip">${s.parsed.rows.length} students</span></div><h2>Match your columns.</h2><p>Required fields are marked *. Unmapped optional fields keep their existing values. Mapped blank values clear that optional field.</p>
       <form id="club-map"><div class="club-field-grid club-mapping" style="margin:22px 0">${fields.map(([key,label]) => `<label>${label}<select name="${key}" aria-label="Map ${label.replace(' *','')}"><option value="">${key === 'grade' || key === 'classroom' ? 'Leave unchanged' : 'Choose a column'}</option>${s.parsed.headers.map((h,i) => `<option value="${i}" ${s.mapping[key] === String(i) ? 'selected' : ''}>${esc(h)}</option>`).join('')}</select></label>`).join('')}</div><div class="club-actions"><button type="submit" class="btn">Review import →</button>${action('Choose another file','reset-import','outline')}</div></form>`;
     if (s.preview) body = `<div class="notice">Nothing has been saved yet. Confirming applies these changes to ${esc(s.school.name)} for ${esc(s.year.label)}. Students missing from this file are kept.</div><div class="club-summary"><span class="chip">${s.preview.summary.new} new</span><span class="chip">${s.preview.summary.updated} updates</span><span class="chip">${s.preview.summary.unchanged} unchanged</span></div>
@@ -229,24 +267,54 @@
     return `<section class="panel club-panel"><h2>${s.preview ? 'A final look before they join.' : 'Bring your school together.'}</h2><p>Preview your roster, check the details, then save it to your shared club.</p>${errors}${body}</section>`;
   }
   function accountView() {
-    return `<section class="panel club-panel"><h2>${esc(s.account.display_name)}</h2><dl class="club-detail"><div><dt>Email</dt><dd>${esc(s.user.email)}</dd></div><div><dt>Role</dt><dd>${esc(s.role)}</dd></div><div><dt>School</dt><dd>${esc(s.school.name)}</dd></div><div><dt>School timezone</dt><dd>${esc(s.school.timezone)}</dd></div></dl><p>Access is assigned by your administrator and checked by the shared database. A school or role cannot be claimed by changing this page.</p><div class="notice">This is a proof of concept. Only upload fictional student information.</div>${action('Sign out of this device','signout','outline')}</section>`;
+    const roleLabel={admin:'Admin',staff:'Staff',parent:'Family'};
+    return `<section class="panel club-panel ios-panel"><h2>${esc(s.account.display_name)}</h2><dl class="club-detail"><div><dt>Email</dt><dd>${esc(s.user.email)}</dd></div><div><dt>Role</dt><dd>${roleLabel[s.role]}</dd></div><div><dt>School</dt><dd>${esc(s.school.name)}</dd></div><div><dt>Time zone</dt><dd>${esc(s.school.timezone)}</dd></div></dl>${s.schools.length>1?schoolPicker():''}${action('Sign out','signout','outline')}</section>
+      ${s.role==='admin'?`<section class="panel club-panel ios-panel"><h2>Manage on the website</h2><div class="ios-management">${websiteLink('Manage schools','schools','/club#schools')}${websiteLink('Manage accounts','accounts','/club#accounts')}${websiteLink('Walk-a-thon registration and bibs','walkathon',`/walkathon?school=${encodeURIComponent(s.school.id)}`)}</div></section>`:''}`;
+  }
+  function renderStudent(view,{keepScroll=false}={}) {
+    const top=dialog.scrollTop,x=view.student;
+    dialog.innerHTML=`<div class="ios-dialog-heading"><h2 id="club-dialog-title">${esc(x.first_name+' '+x.last_name)}</h2>${action('Done','close','outline')}</div>
+      <p class="student-detail-meta">${esc([gradeLabel(x.enrollment?.grade),x.enrollment?.classroom,`ID ${x.external_student_id}`].filter(Boolean).join(' · '))}</p>
+      <section class="ios-student-progress"><label>Progress period<select id="runner-period"><option value="year" ${view.period==='year'?'selected':''}>${esc(s.year?.label||'School year')}</option><option value="lifetime" ${view.period==='lifetime'?'selected':''}>Lifetime at this school</option></select></label>${runnerProgress(x,view.period,view.totals)}${view.totals?.today_laps!=null?`<p>Today ${Number(view.totals.today_laps)} laps · ${TurcProgress.miles(view.totals.today_mm)} mi</p>`:''}</section>
+      ${s.role==='admin'&&s.year?`<div class="club-actions student-tools">${action('Badge','badge','',recordId(x.id))}${action('Edit details','edit','outline',recordId(x.id))}</div>`:''}
+      <section class="ios-lap-history"><h3>Lap history</h3>${view.loading?'<p role="status">Loading laps…</p>':''}
+      ${view.error?`<p role="alert">${esc(view.error)}</p>${action('Retry','history-more','outline',recordId(x.id))}`:''}
+      ${view.laps.length?`<ul>${view.laps.map(lap=>{
+        const time=new Date(lap.accepted_at).toLocaleTimeString('en-US',{timeZone:s.school.timezone,hour:'numeric',minute:'2-digit'});
+        const status=lap.reset_excluded?'Reset history':lap.voided?'Excluded':lap.correction_version?'Corrected':'Counted';
+        return `<li><span><b>${esc(lap.activity_date)}</b><small>${esc(time)} · ${status}</small></span><strong>${TurcProgress.miles(lap.distance_mm)} mi</strong></li>`;
+      }).join('')}</ul>`:!view.loading&&!view.error?'<p>No laps recorded yet.</p>':''}
+      ${view.next&&!view.loading&&!view.error?action('Load more laps','history-more','outline',recordId(x.id)):''}</section>`;
+    if(!dialog.open)dialog.showModal();
+    if(keepScroll)dialog.scrollTop=top;
+  }
+  async function loadLapHistory(view) {
+    if(view.loading)return;
+    view.loading=true;view.error='';renderStudent(view,{keepScroll:true});
+    try {
+      const {data,error}=await client.rpc('turc_runner_history',{p_student:view.student.id,p_before:view.next?.at||null,p_before_id:view.next?.id||null});
+      if(error)throw error;
+      view.laps.push(...(data?.laps||[]));view.next=data?.next||null;
+    } catch(error) { view.error=errorText(error); }
+    finally {
+      view.loading=false;
+      if(view===runnerView&&dialog.open)renderStudent(view,{keepScroll:true});
+    }
   }
   async function runnerDetail(id) {
-    window.TURC_SCANNER?.clearBadge();
-    const x = s.students.find(r => r.id === id); if (!x) return;
-    const token=epoch;
-    dialog.innerHTML = `<h2>${esc(x.first_name+' '+x.last_name)}</h2><dl class="club-detail"><div><dt>Student ID</dt><dd>${esc(x.external_student_id)}</dd></div><div><dt>School year</dt><dd>${esc(s.year?.label || 'Not set')}</dd></div><div><dt>Grade</dt><dd>${esc(x.enrollment?.grade || 'Not set')}</dd></div><div><dt>Classroom</dt><dd>${esc(x.enrollment?.classroom || 'Not set')}</dd></div></dl><p id="runner-totals">Loading saved lap totals…</p><div class="modal-actions">${s.role === 'admin' && s.year ? action('Edit runner','edit','',`data-id="${esc(id)}"`)+action('QR / NFC badge','badge','outline',`data-id="${esc(id)}"`) : ''}${action('Close','close','outline')}</div>`;
-    dialog.showModal();
-    if(window.TURC_SCANNER) {
-      try { const totals=await window.TURC_SCANNER.totals(id); const node=document.getElementById('runner-totals'); if(token===epoch&&node&&dialog.open)node.textContent=`Today: ${totals.today_laps} laps · ${(totals.today_mm/1609344).toFixed(2)} miles. School year: ${(totals.year_mm/1609344).toFixed(2)} miles. Lifetime at school: ${(totals.lifetime_mm/1609344).toFixed(2)} miles.`; }
-      catch { const node=document.getElementById('runner-totals'); if(token===epoch&&node)node.textContent='Lap totals could not load. Reconnect and reopen this runner.'; }
-    }
+    scanner?.clearBadge();
+    const student=s.students.find(x=>x.id===id);if(!student)return;
+    const view=runnerView={student,period:s.year?'year':'lifetime',totals:student.progress,laps:[],next:null,loading:false,error:''};
+    await Promise.all([loadLapHistory(view),Promise.resolve(scanner?.totals(id)).then(totals=>{
+      if(totals&&view===runnerView&&dialog.open){view.totals=totals;renderStudent(view,{keepScroll:true});}
+    }).catch(()=>{})]);
   }
   function editRunner(id) {
     if (s.role !== 'admin' || !s.year) { message('An Admin and active school year are required.'); return; }
     const x = s.students.find(r => r.id === id);
     const fields = [['student_id','Student ID',x?.external_student_id || '',80],['first_name','First name',x?.first_name || '',100],['last_name','Last name',x?.last_name || '',100],['grade','Grade',x?.enrollment?.grade || '',40],['classroom','Classroom / teacher',x?.enrollment?.classroom || '',120]];
-    dialog.innerHTML = `<h2>${x ? 'A runner’s next chapter.' : 'Welcome a new runner.'}</h2><p>Review the proposed change before it is saved.</p><form id="club-edit" data-id="${esc(id || '')}"><div class="club-field-grid">${fields.map(([key,label,value,max]) => `<label>${label}<input name="${key}" value="${esc(value)}" maxlength="${max}" ${['student_id','first_name','last_name'].includes(key) ? 'required' : ''} ${key === 'student_id' && x ? 'readonly' : ''}></label>`).join('')}</div><div class="modal-actions">${action('Cancel','close','outline')}<button type="submit" class="btn">Review change →</button></div></form>`;
+    runnerView=null;
+    dialog.innerHTML = `<h2 id="club-dialog-title">${x?'Edit student':'Add student'}</h2><form id="club-edit" data-id="${esc(id || '')}"><div class="club-field-grid">${fields.map(([key,label,value,max]) => `<label>${label}<input name="${key}" value="${esc(value)}" maxlength="${max}" ${['student_id','first_name','last_name'].includes(key) ? 'required' : ''} ${key === 'student_id' && x ? 'readonly' : ''}></label>`).join('')}</div><div class="modal-actions">${action('Cancel','close','outline')}<button type="submit" class="btn">Review change</button></div></form>`;
     if (!dialog.open) dialog.showModal();
   }
   async function previewRows(data) {
@@ -264,10 +332,15 @@
     const blob = new Blob([text],{type:'text/csv;charset=utf-8'});
     const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url),1000);
   }
+  async function navigate(tab) {
+    s.tab=tab;s.error='';render();window.scrollTo(0,0);
+    if(s.tab==='scanner')await scanner?.loadPanel();
+    if(s.tab==='overview'||s.tab==='roster')await refresh({background:true});
+  }
   async function handleAction(target) {
     const name = target.dataset.action;
     if (s.busy && !['signout','close'].includes(name)) return;
-    if(window.TURC_SCANNER?.handles(name)){await window.TURC_SCANNER.handle(name,target.dataset.id);return;}
+    if(scanner?.handles(name)){if(name==='badge')runnerView=null;await scanner.handle(name,target.dataset.id);return;}
     if (name === 'signout') {
       sessionRemovalPending = true;
       clearPrivateState(); render();
@@ -286,13 +359,28 @@
       return;
     }
     if (name === 'refresh') { await refresh(); return; }
-    if (name === 'close') { window.TURC_SCANNER?.clearBadge(); dialog.close(); dialog.innerHTML = ''; return; }
-    if (name === 'tab') { s.tab = target.dataset.tab; s.error = ''; if(s.tab==='scanner')await window.TURC_SCANNER?.loadPanel?.(); render(); window.scrollTo(0,0); if(s.tab==='roster')await refresh({background:true}); return; }
-    if (name === 'open-import' || name === 'open-roster') { s.tab = name === 'open-import' ? 'import' : 'roster'; s.error = ''; render(); window.scrollTo(0,0); return; }
+    if (name === 'close') { scanner?.clearBadge(); runnerView=null; dialog.close(); dialog.innerHTML = ''; return; }
+    if (name === 'tab') { await navigate(target.dataset.tab);return; }
+    if(name==='open-account'){if(s.tab!=='account'){accountReturn=s.tab;await navigate('account');}return;}
+    if(name==='account-back'){await navigate(accountReturn);return;}
+    if(name==='home-run'||name==='home-walk'){
+      const walk=name==='home-walk',access=permissions(s),token=epoch;
+      if(!scanner||(walk?!access.walk:!access.run))return;
+      await navigate('scanner');
+      if(token!==epoch||s.tab!=='scanner'||scanner.hasUnconfirmed)return;
+      await scanner.handle(walk?'scan-mode-walk':'scan-mode-turc');
+      if(walk&&token===epoch&&s.tab==='scanner'){
+        await scanner.handle('walk-select',target.dataset.id);
+        await scanner.handle('walk-camera');
+      }
+      return;
+    }
+    if (name === 'open-import' || name === 'open-roster') { await navigate(name==='open-import'?'import':'roster');return; }
     if (name === 'reset-import') { resetImport(); s.error = ''; render(); return; }
     if (name === 'detail') { await runnerDetail(target.dataset.id); return; }
+    if (name === 'history-more' && runnerView?.student.id===target.dataset.id) { await loadLapHistory(runnerView);return; }
     if (name === 'add' || name === 'edit') { editRunner(target.dataset.id); return; }
-    if (name === 'sample') { await downloadCSV('turc-fictional-roster.csv',[['Student ID','First Name','Last Name','Grade','Classroom'],['000101','Maya','Example','3','Ms. Parker'],['000102','Oliver','Example','4','Mr. Brooks']]); return; }
+    if (name === 'sample') { await downloadCSV('turc-roster-example.csv',[['Student ID','First Name','Last Name','Grade','Classroom'],['000101','Maya','Example','3','Ms. Parker'],['000102','Oliver','Example','4','Mr. Brooks']]); return; }
     if (name === 'export' && s.role === 'admin') { await downloadCSV('turc-roster.csv',[['Student ID','First Name','Last Name','Grade','Classroom','Status'],...s.students.map(x => [x.external_student_id,x.first_name,x.last_name,x.enrollment?.grade || '',x.enrollment?.classroom || '',x.active ? 'Active' : 'Archived'])]); return; }
     if (name === 'commit' && s.preview) {
       const job = s.preview.job_id, requestEpoch = epoch; s.busy = true; s.error = ''; render();
@@ -308,10 +396,13 @@
   document.addEventListener('click',event => { const target = event.target.closest('[data-action]'); if (target) handleAction(target).catch(e => { s.error = errorText(e); s.busy = false; if(dialog.open){ const node=document.createElement('p');node.className='club-error';node.textContent=s.error;dialog.append(node); } else render(); }); });
   document.addEventListener('input',event => { if (event.target.id === 'club-search') { s.search = event.target.value; const body = document.getElementById('club-roster-body'); if (body) body.innerHTML = rosterRows(); } });
   document.addEventListener('change',async event => {
+    if(event.target.id==='runner-period'&&runnerView){runnerView.period=event.target.value==='lifetime'?'lifetime':'year';renderStudent(runnerView,{keepScroll:true});document.getElementById('runner-period')?.focus();return;}
     if (event.target.id === 'club-school') {
-      window.TURC_SCANNER?.reset();
       const school = s.schools.find(x => x.id === event.target.value); if (!school) return;
+      if(scanner?.hasUnconfirmed){event.target.value=s.school.id;message('Retry or resolve the last scan before switching schools.');return;}
+      scanner?.reset();runnerView=null;
       if (dialog.open) dialog.close(); resetImport(); s.school = school; s.search = ''; await activate({user:s.user});
+      if(s.tab==='scanner'){await scanner?.loadPanel();render();}
     }
     if (event.target.id === 'club-file') {
       const file = event.target.files?.[0]; if (!file) return;
@@ -320,6 +411,7 @@
       catch (error) { s.error = errorText(error); resetImport(); } render();
     }
   });
+  dialog.addEventListener?.('cancel',()=>{runnerView=null;scanner?.clearBadge();});
   document.addEventListener('submit',async event => {
     const form = event.target; if (!['club-login','club-map','club-edit','scan-course'].includes(form.id)) return; event.preventDefault();
     try {

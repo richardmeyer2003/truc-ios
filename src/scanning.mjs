@@ -1,20 +1,21 @@
 import { scanPayload, scanFeedback, miles, uidPattern } from './scan-contract.mjs';
 import { createWalkScanning } from './walkathon.mjs';
+import { scanAccess } from './scan-access.mjs';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const button = (text,action,id='') => `<button type="button" class="btn" data-action="${action}" data-id="${esc(id)}">${text}</button>`;
-const allowed = context => context?.school && context?.year && ['admin','staff'].includes(context.role);
+const allowed = context => context?.year && scanAccess(context).run;
 
 export function createScanning(plugin,isNative) {
   const walk = createWalkScanning(plugin,isNative);
-  let scanMode = 'turc';
+  let scanMode = 'menu';
   let client, getContext, changed, course=null, latest=null, badge=null, runID=null, queue=[], processing=false, pending=null;
   let generation=0, count=0, error='', settingsOpen=false, opening=false, badgeSequence=0, pairing=false;
   let confirmed=new Set();
   const contextKey = c => `${c?.user?.id}/${c?.school?.id}/${c?.year?.id}/${c?.role}`;
   const validContext = key => key===contextKey(getContext()) && allowed(getContext());
   async function rpc(name,args) { const {data,error} = await client.rpc(name,args); if(error) throw error; return data; }
-  async function report(feedback) { if(runID) await plugin.feedback({runID,...feedback}); }
+  async function report(feedback) { if(runID) await plugin.feedback({runID,...feedback}).catch(()=>{}); }
   async function drain() {
     if(processing) return; processing=true;
     try {
@@ -34,7 +35,7 @@ export function createScanning(plugin,isNative) {
           // Preserve the exact event for retry if the server may already have committed it.
           pending=item; queue=[];
           error='The lap is unconfirmed. Retry this scan to check its original result. Do not count it as accepted.';
-          await report({accepted:false,title:'Lap unconfirmed',detail:'Reconnect, close the scanner, and use Retry last scan. The same event will not count twice.'});
+          await report({accepted:false,pending:true,title:'Lap unconfirmed',detail:'Reconnect and use Retry last scan.'});
           await plugin.close(); runID=null; changed(); break;
         }
       }
@@ -49,26 +50,29 @@ export function createScanning(plugin,isNative) {
     catch { await report({accepted:false,title:'Not a TURC badge',detail:'No lap added.'}); }
   }
   function panel() {
-    const c=getContext();
-    if(!allowed(c)) return '<section class="panel club-panel"><h2>School scanning access required</h2><p>An Admin or Staff membership and active school year are required.</p></section>';
-    const selector = `<nav class="club-actions scanner-actions" aria-label="Scanning mode"><button class="btn ${scanMode==='turc'?'':'outline'}" data-action="scan-mode-turc" aria-pressed="${scanMode==='turc'}">TURC</button><button class="btn ${scanMode==='walk'?'':'outline'}" data-action="scan-mode-walk" aria-pressed="${scanMode==='walk'}">Walk-a-thon</button></nav>`;
-    if(scanMode==='walk') return selector+walk.panel();
-    return `${selector}<section class="welcome-card"><div><h2>TURC lap scanning</h2><p>Scan a runner’s QR badge or tap an assigned NTAG215 sticker.</p></div></section>
-    <section class="panel club-panel scanner-panel"><h2>${course?.configured ? esc(course.name) : 'Set up your course'}</h2>
+    const c=getContext(),access=scanAccess(c);
+    if(!access.run&&!access.walk)return '<section class="panel club-panel"><h2>Scanning is unavailable</h2><p>Ask your school Admin to check your access.</p></section>';
+    if(scanMode==='menu'||(scanMode==='walk'?!access.walk:!access.run))return `<div class="scan-choices">
+      ${access.run?'<button type="button" class="scan-choice" data-action="scan-mode-turc"><span><strong>Run Club</strong><small>QR badges and NFC stickers</small></span><span aria-hidden="true">›</span></button>':''}
+      ${access.walk?'<button type="button" class="scan-choice" data-action="scan-mode-walk"><span><strong>Walk-a-thon</strong><small>Event bib QR codes</small></span><span aria-hidden="true">›</span></button>':''}</div>`;
+    const back=`<div class="scan-back">${button('‹ Scan options','scan-mode-menu')}</div>`;
+    if(scanMode==='walk') return back+walk.panel();
+    if(!c.year)return `${back}<section class="panel club-panel"><h2>Run Club</h2><p>An active school year is required before recording laps.</p></section>`;
+    return `${back}<section class="panel club-panel scanner-panel"><h2>Run Club</h2>
+    ${course?.configured?`<h3 class="scan-course-name">${esc(course.name)}</h3>`:''}
     <p>${course?.configured ? `${miles(course.distance_mm)} miles per lap · ${course.cooldown_seconds} second minimum lap interval` : 'An Admin must enter the measured lap distance before scanning.'}</p>
     ${error ? `<div class="club-error" role="alert">${esc(error)}</div>` : ''}
     ${pending ? `<div class="notice">One scan is unconfirmed. Retry before scanning more. This pending result is kept only while this app stays open.</div><div class="club-actions">${button('Retry last scan','scan-retry')}${button('Discard pending retry','scan-discard')}</div>` : ''}
     <div class="scanner-actions">${isNative&&course?.configured&&!pending ? button('Open QR camera','scan-qr')+button('Scan NFC stickers','scan-nfc') : !isNative ? '<p>Camera and NFC scanning are available in the installed iPhone app.</p>' : ''}</div>
-    ${latest ? `<div class="scanner-result" role="status"><h3>${esc(latest.title)}</h3><p>${esc(latest.detail)}</p></div>` : ''}
-    <p class="club-note">${count} confirmed ${count===1?'lap':'laps'} in this scanner visit. Connection required. The first accepted lap opens today’s school session automatically.</p>
-    <p class="club-note">QR stays open between runners. NFC uses iOS’s time-limited reader sheet; tap NFC again when it ends. Your signing method must support NFC Tag Reading.</p>
+    ${latest ? `<div class="scanner-result" data-result="${latest.accepted?'counted':'rejected'}" role="status"><h3>${esc(latest.title)}</h3>${latest.student?`<p><strong>${esc(latest.student)}</strong></p>`:''}<p>${esc(latest.detail)}</p></div>` : ''}
+    <p class="club-note">${count} confirmed ${count===1?'lap':'laps'} on this device. An internet connection is required.</p>
     ${c.role==='admin' ? button(settingsOpen?'Hide course settings':'Course settings','scan-settings') : ''}
     ${settingsOpen&&c.role==='admin' ? `<form id="scan-course" class="scanner-settings"><label>Course name<input name="name" required maxlength="80" value="${esc(course?.name||'School loop')}"></label><label>Measured lap distance (meters)<input name="meters" type="number" required min="0.001" max="1000000" step="0.001" value="${esc(course?.distance_mm?course.distance_mm/1000:'')}"></label><label>Minimum lap interval (seconds)<input name="cooldown" type="number" required min="0" max="3600" step="1" value="${esc(course?.cooldown_seconds??30)}"></label><button type="submit" class="btn">Save course</button><p class="club-note">Changes apply to future laps. Earlier laps keep their captured distance.</p></form>` : ''}</section>`;
   }
   async function loadCourse() {
     const c=getContext(),key=contextKey(c); if(!allowed(c)) return;
     try { const result=await rpc('turc_scan_course',{p_school:c.school.id}); if(!validContext(key))return; course=result; error=''; }
-    catch(e) { if(validContext(key))error=e.message; }
+    catch(e) { if(validContext(key)){course=null;error=e.message;} }
   }
   async function showBadge(id,replace=false) {
     const sequence=++badgeSequence;
@@ -79,7 +83,7 @@ export function createScanning(plugin,isNative) {
     const image=result?await plugin.qrImage({token:result.token}):null; if(!validContext(key)||sequence!==badgeSequence)return;
     badge=result?{...result,context:key}:null;
     const dialog=document.getElementById('club-dialog');
-    dialog.innerHTML=`<h2>${esc(student.first_name+' '+student.last_name)}</h2><p>Select student → scan NTAG215 UID → generate printable badge.</p>${result?`<img class="badge-qr" src="${image.dataURL}" alt="TURC runner QR badge"><p id="badge-status" class="club-note">Assigned sticker UID: <b>${esc(result.tag_uid)}</b></p><div class="club-actions">${button('Generate printable badge','badge-print')}${button('Replace sticker…','badge-replace',id)}`:`<p id="badge-status" class="club-note">${replace?'Scan an unassigned replacement sticker. The old assignment stays active until the new UID is saved.':'Scan this student’s NTAG215 sticker to read and assign its factory UID. The QR becomes available after assignment.'}</p><div class="club-actions">${button('Scan NTAG215 UID','badge-scan-uid',id)}`}${button('Close','close')}</div>`;
+    dialog.innerHTML=`<h2 id="club-dialog-title">Badge</h2><p>${esc(student.first_name+' '+student.last_name)}</p>${result?`<img class="badge-qr" src="${esc(image.dataURL)}" alt="Student badge QR code"><p id="badge-status" class="club-note">Sticker ID <b>${esc(result.tag_uid)}</b></p><div class="club-actions">${button('Share printable badge','badge-print')}${button('Replace sticker…','badge-replace',id)}</div>`:`<p id="badge-status" class="club-note">${replace?'Scan an unassigned replacement sticker. The current badge works until the new sticker is saved.':'Scan an NTAG215 sticker to assign it and create the student’s QR badge.'}</p><div class="club-actions">${button('Scan NFC sticker','badge-scan-uid',id)}</div>`}<div class="modal-actions">${button('Back to student','detail',id)}${button('Done','close')}</div>`;
     if(!dialog.open)dialog.showModal();
   }
   return {
@@ -89,21 +93,27 @@ export function createScanning(plugin,isNative) {
         plugin.addListener('scan',event=>receive(event).catch(()=>{}));
         plugin.addListener('closed',event=>{if(runID===event.runID)runID=null;});
       }
-    }, panel,loadCourse,async loadPanel(){if(scanMode==='walk'&&!walk.pending)await walk.load();else if(scanMode==='turc')await loadCourse();},
+    }, panel,permissions:scanAccess,loadCourse,
+    get openEvents(){return walk.openEvents;},
+    get hasUnconfirmed(){return Boolean(pending||processing||walk.pending);},
+    loadHome(){return walk.load({quiet:true});},
+    async loadPanel(){if(scanMode==='walk'&&!walk.pending)await walk.load();else if(scanMode==='turc'){await loadCourse();changed(true);}},
     clearBadge() {badgeSequence++;badge=null;},
-    reset() {generation++;badgeSequence++;queue=[];pending=null;badge=null;course=null;latest=null;count=0;confirmed=new Set();error='';settingsOpen=false;runID=null;walk.reset();scanMode='turc';if(isNative)plugin.close().catch(()=>{});},
-    handles(name) {return ['scan-qr','scan-nfc','scan-settings','scan-retry','scan-discard','scan-mode-turc','scan-mode-walk','walk-camera','walk-select','walk-load','walk-retry','badge','badge-replace','badge-replace-confirm','badge-scan-uid','badge-print'].includes(name);},
+    reset() {generation++;badgeSequence++;queue=[];pending=null;badge=null;course=null;latest=null;count=0;confirmed=new Set();error='';settingsOpen=false;runID=null;walk.reset();scanMode='menu';if(isNative)plugin.close().catch(()=>{});},
+    handles(name) {return ['scan-qr','scan-nfc','scan-settings','scan-retry','scan-discard','scan-mode-menu','scan-mode-turc','scan-mode-walk','walk-camera','walk-select','walk-load','walk-retry','badge','badge-replace','badge-replace-confirm','badge-scan-uid','badge-print'].includes(name);},
     async handle(name,id) {
-      const c=getContext(); if(!allowed(c)) throw Error('School scanning access required.');
-      if(name==='scan-mode-turc'||name==='scan-mode-walk') {
-        const next=name==='scan-mode-walk'?'walk':'turc';
+      const c=getContext(),access=scanAccess(c);
+      if(name.startsWith('scan-mode-')) {
+        const next=name.slice('scan-mode-'.length);
+        if((next==='turc'&&!access.run)||(next==='walk'&&!access.walk))throw Error('Scanning is unavailable for this account.');
         if(next===scanMode)return;
         if(pending||processing||walk.pending)throw Error('Finish or retry the last scan before switching modes.');
         scanMode=next;changed(true);
-        if(next==='walk')await walk.load();else await loadCourse();
+        if(next==='walk')await walk.load();else if(next==='turc')await loadCourse();
         changed(true);return;
       }
       if(name.startsWith('walk-')) {if(scanMode==='walk')await walk.handle(name,id);return;}
+      if(!allowed(c))throw Error('Run Club requires scanning access and an active school year.');
       if(name==='scan-settings'){settingsOpen=!settingsOpen;changed(true);return;}
       if(name==='scan-retry'){if(pending){queue.push(pending);pending=null;await drain();changed();}return;}
       if(name==='scan-discard'){pending=null;error='Retry discarded. A server-committed lap remains recorded; refresh totals before rescanning.';changed();return;}

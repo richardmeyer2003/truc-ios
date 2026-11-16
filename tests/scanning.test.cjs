@@ -20,7 +20,7 @@ test('native NFC implementation contains UID reads and no tag write operation',(
 test('feedback distinguishes accepted laps from cooldown and never claims rejection counted',async()=>{
   const {scanFeedback}=await import('../src/scan-contract.mjs');
   const ok=scanFeedback({accepted:true,name:'Maya Example',totals:{today_laps:2,today_mm:1609344,year_mm:3218688,lifetime_mm:4828032}});
-  assert.equal(ok.title,'Maya Example');assert.equal(ok.detail,'Today 1.00 mi · 3.00 mi to next milestone');
+  assert.equal(ok.title,'Lap counted');assert.equal(ok.student,'Maya Example');assert.equal(ok.detail,'Today 1.00 mi · 3.00 mi to next milestone');
   const no=scanFeedback({accepted:false,reason:'cooldown'});assert.equal(no.accepted,false);assert.equal(no.detail,'No lap added.');
 });
 
@@ -29,9 +29,11 @@ async function harness(rpc) {
   const storage=new Map();global.localStorage={getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)};
   const events={},feedback=[];let options;
   const plugin={addListener:async(name,fn)=>{events[name]=fn;},open:async o=>{options=o;},close:async()=>{},feedback:async f=>feedback.push(f)};
-  let context={user:{id:'adult'},school:{id:'school',name:'Test school'},year:{id:'year'},role:'staff'};
+  let context={user:{id:'adult'},school:{id:'school',name:'Test school'},year:{id:'year'},role:'staff',
+    memberships:[{user_id:'adult',school_id:'school',role:'staff',active:true,can_scan_run_club:true}]};
   const scanner=createScanning(plugin,true);
   scanner.configure({rpc:async(name,args)=>name==='turc_scan_course'?{data:{configured:true,name:'Loop',distance_mm:100000,cooldown_seconds:30}}:rpc(name,args)},()=>context,()=>{});
+  await scanner.handle('scan-mode-turc');
   await scanner.handle('scan-qr');
   return {scanner,feedback,context:c=>{context=c;},scan:(id='11111111-1111-4111-8111-111111111111')=>events.scan({runID:options.runID,value:badge,source:'qr',eventID:id,observedAt:'2026-11-09T22:00:00Z'})};
 }
@@ -59,7 +61,7 @@ test('milestone feedback matches website thresholds, rounds remaining positively
     const before=scanFeedback({accepted:true,name:'Maya',totals:{today_mm:4828032,year_mm:target.mm-1,lifetime_mm:999999999}});
     assert.equal(before.detail,'Today 3.00 mi · 0.01 mi to next milestone');
     const at=scanFeedback({accepted:true,name:'Maya',totals:{today_mm:4828032,year_mm:target.mm}});
-    assert.equal(at.title,'Maya');assert.doesNotMatch(at.detail,/Lap |Year |Lifetime /);
+    assert.equal(at.title,'Lap counted');assert.equal(at.student,'Maya');assert.doesNotMatch(at.detail,/Lap |Year |Lifetime /);
     if(target.miles===50)assert.equal(at.detail,'Today 3.00 mi · All milestones reached');
     else assert.match(at.detail,/mi to next milestone$/);
   }
