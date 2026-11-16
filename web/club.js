@@ -195,6 +195,10 @@
     if (s.loading) { root.innerHTML = `<main class="club-auth"><a class="club-brand" href="/">${brand}</a><section class="panel club-progress"><h1>Opening your club…</h1><p>Loading your authorized school roster.</p></section></main>`; return; }
     if (!s.user) { renderAuth(); return; }
     if (!s.account || !s.school) {
+      if(s.account&&s.memberships.some(m=>m.user_id===s.user.id&&m.active&&m.role==='admin'&&!m.school_id)){
+        root.innerHTML=`<main class="club-auth"><a class="club-brand" href="/">${brand}</a><section class="panel"><h1>No active schools</h1><p>Add or restore a school on the TURC website.</p><div class="club-actions">${websiteLink('Manage schools','schools','/club#schools')}${action('Sign out','signout','outline')}</div></section></main>`;
+        return;
+      }
       root.innerHTML = `<main class="club-auth"><a class="club-brand" href="/">${brand}</a><section class="panel"><div class="eyebrow">YOU’RE SIGNED IN</div><h1>Your club access is being set up.</h1>
         <p>${esc(s.user.email)} is signed in, but no active school membership is available. Your administrator needs to assign your school and role.</p>
         ${s.error ? `<div class="club-error" role="alert">${esc(s.error)}</div>` : ''}<div class="club-actions">${action('Check my access','refresh')}${action('Sign out','signout','outline')}</div></section></main>`; return;

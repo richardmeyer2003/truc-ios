@@ -112,6 +112,16 @@ test('a downgraded role clears previous privileged data even if the roster reque
   await h.timer();assert(!h.root.innerHTML.includes('Maya'));assert(!h.root.innerHTML.includes('Add student'));assert.match(h.sync.textContent,/Update paused/);
 });
 
+test('a District Admin with all schools archived can reach school management',async()=>{
+  const h=await setup();
+  h.data.turc_memberships[0].school_id=null;
+  h.data.turc_schools[0].active=false;
+  await h.timer();
+  assert.match(h.root.innerHTML,/<h1>No active schools<\/h1>/);
+  assert.match(h.root.innerHTML,/data-website="schools"/);
+  assert.doesNotMatch(h.root.innerHTML,/Maya/);
+});
+
 test('school-year progress appears beside names and refreshes when mileage changes',async()=>{
   const h=await setup();await h.click('tab',{tab:'roster'});
   assert.match(h.root.innerHTML,/3.00 mi this year/);assert.match(h.root.innerHTML,/2.00 mi to 5 miles/);

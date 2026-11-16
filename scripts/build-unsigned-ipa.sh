@@ -41,11 +41,10 @@ printf 'TURC %s — unsigned iPhone app\n' "$version" > artifacts/README.txt
 cat >> artifacts/README.txt <<'EOF'
 Sign this IPA using your own signing method before installing it.
 No Apple signing credentials or provisioning profiles are included.
-Sign in with your existing TURC website account, not your GitHub dashboard account.
-This build connects to the existing Supabase roster. Use fictional students only.
+Sign in with your TURC website account to use the shared roster.
 Native camera QR and read-only NFC UID scanners share the authenticated badge/lap API.
 For a Walk-a-thon, open Scan → Walk-a-thon and select an open event. Scan event bibs with the QR camera.
-Admins: select runner > QR / NFC badge > scan NTAG215 UID > generate printable badge PDF.
+Admins: open Students, select a student, and tap Badge. Tap Scan NFC sticker to assign an NTAG215 sticker, then Share printable badge.
 The app never writes to NFC tags. Both the sticker UID and printed QR resolve to the saved student assignment.
 Print the Letter PDF at 100% / Actual Size; cut guides mark a 2.52 by 3.54 inch insert.
 NFC requires your signing method to preserve/provision the included TURC-required.entitlements.
