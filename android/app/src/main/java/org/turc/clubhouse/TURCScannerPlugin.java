@@ -48,6 +48,10 @@ public class TURCScannerPlugin extends Plugin {
     private static final int DARK = Color.rgb(23, 53, 51);
     private static final int GREEN = Color.rgb(20, 88, 62);
     private static final int AMBER = Color.rgb(111, 58, 11);
+    private static final int CHARCOAL = 0xff19191b;
+    private static final int GOLD = 0xffd8b875;
+    private static final int IVORY = 0xfff4efe6;
+    private boolean blackGold;
     private final Map<String, Long> recent = new HashMap<>();
 
     private Dialog sheet;
@@ -110,6 +114,7 @@ public class TURCScannerPlugin extends Plugin {
     }
 
     private void startScanner(PluginCall call, String mode) {
+        blackGold = "black-gold".equals(call.getString("theme"));
         runId = call.getString("runID", UUID.randomUUID().toString());
         walkathon = "walkathon".equals(mode);
         showSheet((walkathon ? "Walk-a-thon" : "Run Club") + "\n" + call.getString("school", "Your school"));
@@ -126,6 +131,7 @@ public class TURCScannerPlugin extends Plugin {
             if (sheet != null || cameraRequest != null) { call.reject("Close the scanner before assigning a sticker"); return; }
             if (!nfcReady(call)) return;
             pairing = call;
+            blackGold = "black-gold".equals(call.getString("theme"));
             showSheet("Assign NFC sticker");
             startReader();
         });
@@ -142,12 +148,12 @@ public class TURCScannerPlugin extends Plugin {
         Dialog dialog = new Dialog(getActivity(), android.R.style.Theme_Material_NoActionBar);
         sheet = dialog;
         LinearLayout layout = column();
-        layout.setBackgroundColor(DARK);
+        layout.setBackgroundColor(blackGold ? 0xff0b0b0c : DARK);
         layout.setPadding(dp(14), dp(14), dp(14), dp(12));
 
         LinearLayout header = new LinearLayout(getActivity());
         header.setGravity(Gravity.CENTER_VERTICAL);
-        TextView heading = label(title, 19, Color.WHITE, true);
+        TextView heading = label(title, 19, blackGold ? GOLD : Color.WHITE, true);
         header.addView(heading, new LinearLayout.LayoutParams(0, -2, 1));
         header.addView(button("Done", this::finish));
         layout.addView(header);
@@ -158,7 +164,7 @@ public class TURCScannerPlugin extends Plugin {
         feedback.setPadding(dp(16), dp(12), dp(16), dp(14));
         statusTitle = label("", 24, DARK, true);
         statusTitle.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        statusDetail = label("", 16, DARK, false);
+        statusDetail = label("", 16, blackGold ? IVORY : DARK, false);
         statusDetail.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         feedback.addView(statusTitle);
         feedback.addView(statusDetail);
@@ -209,7 +215,7 @@ public class TURCScannerPlugin extends Plugin {
         }
         if (camera != null) camera.pause();
         preview.removeAllViews();
-        TextView prompt = label("Hold an NTAG215 sticker to the back of this phone.", 19, Color.WHITE, true);
+        TextView prompt = label("Hold an NTAG215 sticker to the back of this phone.", 19, blackGold ? IVORY : Color.WHITE, true);
         prompt.setGravity(Gravity.CENTER);
         prompt.setPadding(dp(16), dp(16), dp(16), dp(16));
         preview.addView(prompt, new FrameLayout.LayoutParams(-1, -1));
@@ -320,6 +326,11 @@ public class TURCScannerPlugin extends Plugin {
         if (feedback == null) return;
         statusTitle.setText(title);
         statusDetail.setText(detail);
+        if (blackGold) {
+            statusTitle.setTextColor(Boolean.FALSE.equals(accepted) ? 0xffffb5b4 : GOLD);
+            feedback.setBackgroundColor(CHARCOAL);
+            return;
+        }
         statusTitle.setTextColor(accepted == null ? DARK : accepted ? GREEN : AMBER);
         feedback.setBackgroundColor(accepted == null ? Color.rgb(245, 250, 248)
                 : accepted ? Color.rgb(223, 242, 231) : Color.rgb(255, 241, 216));
@@ -402,6 +413,11 @@ public class TURCScannerPlugin extends Plugin {
     private Button button(String title, Runnable action) {
         Button view = new Button(getActivity());
         view.setText(title); view.setAllCaps(false);
+        if (blackGold) {
+            boolean primary = "QR camera".equals(title);
+            view.setTextColor(primary ? Color.BLACK : GOLD);
+            view.setBackgroundTintList(android.content.res.ColorStateList.valueOf(primary ? GOLD : CHARCOAL));
+        }
         view.setMinHeight(dp(48)); view.setOnClickListener(ignored -> action.run());
         return view;
     }

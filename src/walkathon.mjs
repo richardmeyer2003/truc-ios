@@ -1,10 +1,11 @@
 import { scanAccess } from './scan-access.mjs';
+import { scannerAppearance } from './scan-contract.mjs';
 
-const codePattern = /^wt1:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export const walkCodePattern = /^wt1:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char]);
 const action = (label, name, id = '') => `<button type="button" class="btn outline" data-action="${name}" data-id="${escape(id)}">${label}</button>`;
 
-export function createWalkScanning(plugin, isNative) {
+export function createWalkScanning(plugin, scannerAvailable) {
   let client, context, changed;
   let events = [], selected = null, runID = null, pending = null, feedback = null, nextScan = null;
   let generation = 0, sending = false, opening = false, loading = false, error = '', request = null;
@@ -91,7 +92,7 @@ export function createWalkScanning(plugin, isNative) {
     if (!key || !scanAccess(context()).walk || !runID || event.runID!==runID || !selected || pending) return;
     // The native sheet can emit again as soon as it displays the previous result.
     if (sending) { nextScan=event; return; }
-    if (event.source!=='qr' || !codePattern.test(event.value)) {
+    if (event.source!=='qr' || !walkCodePattern.test(event.value)) {
       void show({accepted:false,title:'Use a Walk-a-thon bib',detail:'This scanner accepts Walk-a-thon QR codes.'}); return;
     }
     const payload = {p_event:selected.id,p_code:event.value,p_request:event.eventID};
@@ -101,7 +102,7 @@ export function createWalkScanning(plugin, isNative) {
   return {
     configure(api, getContext, onChange) {
       client = api; context = getContext; changed = onChange;
-      if (isNative) {
+      if (scannerAvailable) {
         plugin.addListener('scan',receive);
         plugin.addListener('closed',event=>{ if (event.runID===runID) runID=null; });
       }
@@ -117,7 +118,7 @@ export function createWalkScanning(plugin, isNative) {
         <div class="club-actions" aria-label="Open Walk-a-thon events">${events.map(event=>`<button type="button" class="btn ${event.id===selected?.id?'':'outline'}" aria-pressed="${event.id===selected?.id}" data-action="walk-select" data-id="${escape(event.id)}">${escape(event.name)}</button>`).join('')}</div>
         ${selected?`<p class="club-note">${escape(selected.name)} · ${selected.min_lap_seconds}s minimum lap time</p>`:''}
         ${pending?`<div class="notice">The last lap is unconfirmed. Retry before continuing.</div>${action('Retry last scan','walk-retry')}`:''}
-        <div class="club-actions">${isNative&&selected&&!pending&&!loading?action('Scan Walk-a-thon QR','walk-camera'):''}${!pending?action('Refresh events','walk-load'):''}</div>
+        <div class="club-actions">${scannerAvailable&&selected&&!pending&&!loading?action('Scan Walk-a-thon QR','walk-camera'):''}${!pending?action('Refresh events','walk-load'):''}</div>
         ${feedback?`<div class="scanner-result" data-result="${feedback.accepted?'counted':'rejected'}" role="status"><h3>${escape(feedback.title)}</h3>${feedback.student?`<p><strong>${escape(feedback.student)}</strong></p>`:''}<p>${escape(feedback.detail)}</p></div>`:''}</section>`;
     },
     async handle(name, id) {
@@ -127,14 +128,14 @@ export function createWalkScanning(plugin, isNative) {
       if (pending || sending) throw Error('Finish or retry the last Walk-a-thon scan first.');
       if (name==='walk-load') return load();
       if (name==='walk-select') { selected=events.find(event=>event.id===id)||null; feedback=null; changed(true); return; }
-      if (name!=='walk-camera' || opening || runID || !isNative || !selected) return;
+      if (name!=='walk-camera' || opening || runID || !scannerAvailable || !selected) return;
       const key=scope(), version=generation, eventID=selected.id;
       opening = true;
       try {
         await load();
         if (!active(key,version) || selected?.id!==eventID) return;
         runID = crypto.randomUUID();
-        try { await plugin.open({runID,school:selected.name,mode:'walkathon'}); }
+        try { await plugin.open({runID,school:selected.name,mode:'walkathon',...scannerAppearance()}); }
         catch (failure) { runID=null; throw failure; }
         if (!active(key,version)) await plugin.close();
       } finally { opening=false; }

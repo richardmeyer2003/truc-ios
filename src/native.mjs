@@ -1,4 +1,4 @@
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Capacitor, SystemBars, SystemBarsStyle, registerPlugin } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { keychainStorage } from './storage.mjs';
 import { createScanning } from './scanning.mjs';
@@ -8,6 +8,9 @@ const native = registerPlugin('TURCNative');
 window.TURC_SCANNER = createScanning(registerPlugin('TURCScanner'),isNative);
 window.TURC_PLATFORM = {
   isNative,
+  applyTheme(theme) {
+    if(isNative)void SystemBars.setStyle({style:theme==='black-gold'?SystemBarsStyle.Dark:SystemBarsStyle.Light}).catch(()=>{});
+  },
   async ready() {
     if (isNative && !Capacitor.isPluginAvailable('TURCNative')) {
       throw new Error('Secure sign-in is unavailable in this build. Please install a new TURC build.');

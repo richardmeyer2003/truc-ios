@@ -1,0 +1,147 @@
+.turc-appearance { margin-top: 14px; }
+.turc-appearance .club-note { margin: 0 0 12px; }
+.turc-theme-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.turc-theme-option.btn { min-height: 48px; justify-content: start; gap: 8px; }
+.turc-theme-option[aria-pressed="true"] { outline: 2px solid currentColor; outline-offset: -2px; }
+.turc-theme-option[aria-pressed="true"]:focus-visible { outline-offset: 3px; }
+.turc-theme-swatch {
+  display: inline-block;
+  flex: 0 0 23px;
+  height: 23px;
+  border: 1px solid #879b98;
+  border-radius: 7px;
+  background: linear-gradient(135deg,#e7f0f3 48%,#267365 49%);
+}
+.turc-theme-swatch[data-swatch="black-gold"] {
+  background: linear-gradient(135deg,#19191b 48%,#d8b875 49%);
+  border-color: #9c844f;
+}
+
+:root[data-turc-theme="black-gold"] {
+  --theme-base: #0b0b0c;
+  --theme-surface: #19191b;
+  --theme-raised: #252526;
+  --theme-line: #3d3b39;
+  --theme-control: #796b57;
+  --theme-gold: #d8b875;
+  --theme-gold-light: #f0d49a;
+  --theme-ink: #f4efe6;
+  --theme-muted: #b4aea4;
+  --theme-danger: #ffb5b4;
+  --ink: var(--theme-ink);
+  --muted: var(--theme-muted);
+  --paper: var(--theme-base);
+  --line: var(--theme-line);
+  color: var(--theme-ink);
+  background: var(--theme-base);
+  color-scheme: dark;
+}
+
+[data-turc-theme="black-gold"] .club-body {
+  background: var(--theme-base);
+  color: var(--theme-ink);
+}
+[data-turc-theme="black-gold"] .club-body::before,
+[data-turc-theme="black-gold"] .club-body::after { content: none; }
+
+[data-turc-theme="black-gold"] .club-body :is(.club-header,.club-tabs,.panel,.stat,dialog,.ios-menu,.turc-account-links) {
+  background: var(--theme-surface);
+  border-color: var(--theme-line);
+  color: var(--theme-ink);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+[data-turc-theme="black-gold"] .club-body dialog::backdrop {
+  background: #000a;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+[data-turc-theme="black-gold"] .club-body :is(h1,h2,.club-brand,.eyebrow,.ios-today strong,.progress-heading strong,.lap-record strong,.club-stats strong,.student-chevron) {
+  color: var(--theme-gold);
+}
+[data-turc-theme="black-gold"] .club-brand svg path { stroke: var(--theme-base); }
+[data-turc-theme="black-gold"] :is(.club-context p,.club-panel > p,.club-auth p,.club-empty p,.club-note,
+  .club-detail dt,.club-counter,.club-footer,.club-period,.club-mobile-sort,.club-account small,.turc-school-label,
+  .turc-breadcrumb,.ios-school-name,.club-body .ios-school-picker,.ios-today span,.student-detail-meta,.student-text small,
+  .ios-lap-history small,.ios-student-progress > p,.student-empty,.scan-choice small,.walk-runner small,.progress-heading > span,
+  .runner-progress p,.student-row .runner-progress,.ios-student-progress .runner-progress) { color: var(--theme-muted); }
+
+[data-turc-theme="black-gold"] .club-body .btn {
+  color: var(--theme-base);
+  background: linear-gradient(165deg,var(--theme-gold-light),#c7a55e);
+  border-color: var(--theme-gold);
+  box-shadow: none;
+}
+[data-turc-theme="black-gold"] .club-body .btn:hover { background: var(--theme-gold-light); }
+[data-turc-theme="black-gold"] .club-body :is(.btn.outline,.btn.white,.btn[data-action="scan-settings"]) {
+  background: var(--theme-surface);
+  color: var(--theme-gold);
+  border-color: #977c48;
+}
+[data-turc-theme="black-gold"] .club-body :is(.btn.outline,.btn.white,.btn[data-action="scan-settings"]):hover {
+  background: var(--theme-raised);
+}
+[data-turc-theme="black-gold"] .club-body :is(.scan-back .btn,.text-action.btn) {
+  background: transparent;
+  color: var(--theme-gold);
+  border-color: transparent;
+}
+[data-turc-theme="black-gold"] .club-body :is(.scan-back .btn,.text-action.btn):hover { background: var(--theme-raised); }
+[data-turc-theme="black-gold"] .club-body .btn.danger { background: #843e47; color: #fff4f2; border-color: #b96a71; }
+[data-turc-theme="black-gold"] .club-body .btn.danger:hover { background: #994b52; }
+[data-turc-theme="black-gold"] .club-body .btn.danger-outline {
+  background: #331e24; color: var(--theme-danger); border-color: #9b626b;
+}
+[data-turc-theme="black-gold"] .club-body .btn.danger-outline:hover { background: #46262e; }
+[data-turc-theme="black-gold"] .club-body :focus-visible { outline-color: var(--theme-gold-light); }
+
+[data-turc-theme="black-gold"] .club-body :is(input:not([type="checkbox"]),select,textarea,.search,
+  .ios-overflow summary,.turc-account-menu summary,.student-row,.scan-choice,.club-upload,.club-mapping label,
+  .club-roster-table tbody > tr,.lap-record,.milestone,.notice,.chip,.avatar,.table-wrap) {
+  color: var(--theme-ink);
+  background: var(--theme-surface);
+  border-color: var(--theme-control);
+  box-shadow: none;
+}
+[data-turc-theme="black-gold"] .club-body :is(input,textarea)::placeholder { color: var(--theme-muted); }
+[data-turc-theme="black-gold"] .club-body [type="checkbox"] { accent-color: var(--theme-gold); }
+[data-turc-theme="black-gold"] .club-body :is(.milestone.earned,.avatar,.club-sort-button span,.turc-breadcrumb a) { color: var(--theme-gold); }
+[data-turc-theme="black-gold"] .club-body :is(.club-tab,.turc-nav a,.turc-event-tabs a,.turc-account-links a,.turc-account-links button) { color: var(--theme-ink); }
+[data-turc-theme="black-gold"] .club-body :is(.club-tab,.turc-nav a,.turc-event-tabs a)[aria-current="page"],
+[data-turc-theme="black-gold"] .club-body :is(.turc-nav a,.turc-event-tabs a,.turc-account-links a,.turc-account-links button,.club-sort-button):hover {
+  background: var(--theme-raised);
+  color: var(--theme-gold);
+  box-shadow: inset 0 0 0 1px #977c48;
+}
+[data-turc-theme="black-gold"] .club-body :is(th,td,.turc-checks,.walk-roster,.walk-runner,.ios-event,.ios-lap-history li,hr) {
+  border-color: var(--theme-line);
+}
+[data-turc-theme="black-gold"] .club-body .club-table th,
+[data-turc-theme="black-gold"] .club-body .club-roster-table td::before { color: var(--theme-muted); }
+[data-turc-theme="black-gold"] .club-body .club-table th { background: var(--theme-raised); }
+[data-turc-theme="black-gold"] .club-body .runner-progress progress { background: var(--theme-raised); }
+[data-turc-theme="black-gold"] .club-body .runner-progress progress::-webkit-progress-bar { background: var(--theme-raised); }
+[data-turc-theme="black-gold"] .club-body .runner-progress progress::-webkit-progress-value { background: var(--theme-gold); }
+[data-turc-theme="black-gold"] .club-body .runner-progress progress::-moz-progress-bar { background: var(--theme-gold); }
+
+[data-turc-theme="black-gold"] .club-body :is(.club-toast,.scanner-panel .scanner-result,.web-scan-result,.walk-status) {
+  background: var(--theme-raised);
+  color: var(--theme-ink);
+  border-color: var(--theme-control);
+}
+[data-turc-theme="black-gold"] .club-body :is(.scanner-panel .scanner-result[data-result="counted"],.web-scan-result[data-state="accepted"],.walk-scan-result[data-kind="success"]) { color: #b5dfbf; }
+[data-turc-theme="black-gold"] .club-body :is(.club-error,.scanner-panel .scanner-result[data-result="rejected"],.web-scan-result[data-state="rejected"],.walk-status.walk-error,.walk-scan-result[data-kind="error"]) {
+  background: #331e24;
+  color: var(--theme-danger);
+  border-color: #9b626b;
+}
+[data-turc-theme="black-gold"] .club-body .web-scan-preview,
+[data-turc-theme="black-gold"] .club-body .web-scan-preview canvas,
+[data-turc-theme="black-gold"] .club-body #walk-video { background: var(--theme-base); }
+[data-turc-theme="black-gold"] .club-body .web-scan-guide { border-color: var(--theme-gold-light); box-shadow: none; }
+[data-turc-theme="black-gold"] .club-body .badge-qr { background: white; }
+/* Keep grade colors visible on the event display, including in fullscreen. */
+[data-turc-theme="black-gold"] .club-body .walk-display { color: var(--theme-ink); background: var(--theme-base); }
+[data-turc-theme="black-gold"] .club-body .walk-standings .panel { background: var(--grade-column,#fff); color: #1b383b; }
+[data-turc-theme="black-gold"] .club-body .walk-standings h2 { color: var(--grade-ink,#fff); }

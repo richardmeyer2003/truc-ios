@@ -2,6 +2,7 @@ import '../web/progress.js';
 
 export const credentialPattern = /^turc:v1:[a-f0-9]{64}$/;
 export const uidPattern = /^[A-F0-9]{14}$/;
+export const scannerAppearance = () => globalThis.TurcAppearance?.theme === 'black-gold' ? { theme: 'black-gold' } : {};
 export function scanPayload(event, school, device) {
   const value=event.source==='nfc'?String(event.value).toUpperCase():event.value;
   if (!(event.source==='qr'?credentialPattern.test(value):event.source==='nfc'&&uidPattern.test(value))

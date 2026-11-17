@@ -1,4 +1,4 @@
-import { scanPayload, scanFeedback, miles, uidPattern } from './scan-contract.mjs';
+import { scanPayload, scanFeedback, miles, uidPattern, scannerAppearance } from './scan-contract.mjs';
 import { createWalkScanning } from './walkathon.mjs';
 import { scanAccess } from './scan-access.mjs';
 
@@ -6,8 +6,8 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<'
 const button = (text,action,id='') => `<button type="button" class="btn" data-action="${action}" data-id="${esc(id)}">${text}</button>`;
 const allowed = context => context?.year && scanAccess(context).run;
 
-export function createScanning(plugin,isNative) {
-  const walk = createWalkScanning(plugin,isNative);
+export function createScanning(plugin,scannerAvailable,{ web = false } = {}) {
+  const walk = createWalkScanning(plugin,scannerAvailable);
   let scanMode = 'menu';
   let client, getContext, changed, course=null, latest=null, badge=null, runID=null, queue=[], processing=false, pending=null;
   let generation=0, count=0, error='', settingsOpen=false, opening=false, badgeSequence=0, pairing=false;
@@ -53,7 +53,7 @@ export function createScanning(plugin,isNative) {
     const c=getContext(),access=scanAccess(c);
     if(!access.run&&!access.walk)return '<section class="panel club-panel"><h2>Scanning is unavailable</h2><p>Ask your school Admin to check your access.</p></section>';
     if(scanMode==='menu'||(scanMode==='walk'?!access.walk:!access.run))return `<div class="scan-choices">
-      ${access.run?'<button type="button" class="scan-choice" data-action="scan-mode-turc"><span><strong>Run Club</strong><small>QR badges and NFC stickers</small></span><span aria-hidden="true">›</span></button>':''}
+      ${access.run?`<button type="button" class="scan-choice" data-action="scan-mode-turc"><span><strong>Run Club</strong><small>${web?'Student QR badges':'QR badges and NFC stickers'}</small></span><span aria-hidden="true">›</span></button>`:''}
       ${access.walk?'<button type="button" class="scan-choice" data-action="scan-mode-walk"><span><strong>Walk-a-thon</strong><small>Event bib QR codes</small></span><span aria-hidden="true">›</span></button>':''}</div>`;
     const back=`<div class="scan-back">${button('‹ Scan options','scan-mode-menu')}</div>`;
     if(scanMode==='walk') return back+walk.panel();
@@ -63,7 +63,7 @@ export function createScanning(plugin,isNative) {
     <p>${course?.configured ? `${miles(course.distance_mm)} miles per lap · ${course.cooldown_seconds} second minimum lap interval` : 'An Admin must enter the measured lap distance before scanning.'}</p>
     ${error ? `<div class="club-error" role="alert">${esc(error)}</div>` : ''}
     ${pending ? `<div class="notice">One scan is unconfirmed. Retry before scanning more. This pending result is kept only while this app stays open.</div><div class="club-actions">${button('Retry last scan','scan-retry')}${button('Discard pending retry','scan-discard')}</div>` : ''}
-    <div class="scanner-actions">${isNative&&course?.configured&&!pending ? button('Open QR camera','scan-qr')+button('Scan NFC stickers','scan-nfc') : !isNative ? '<p>Camera and NFC scanning are available in the installed TURC app.</p>' : ''}</div>
+    <div class="scanner-actions">${scannerAvailable&&course?.configured&&!pending ? button('Open QR camera','scan-qr')+(web?'':button('Scan NFC stickers','scan-nfc')) : !scannerAvailable ? '<p>Camera and NFC scanning are available in the installed TURC app.</p>' : ''}</div>
     ${latest ? `<div class="scanner-result" data-result="${latest.accepted?'counted':'rejected'}" role="status"><h3>${esc(latest.title)}</h3>${latest.student?`<p><strong>${esc(latest.student)}</strong></p>`:''}<p>${esc(latest.detail)}</p></div>` : ''}
     <p class="club-note">${count} confirmed ${count===1?'lap':'laps'} on this device. An internet connection is required.</p>
     ${c.role==='admin' ? button(settingsOpen?'Hide course settings':'Course settings','scan-settings') : ''}
@@ -83,13 +83,23 @@ export function createScanning(plugin,isNative) {
     const image=result?await plugin.qrImage({token:result.token}):null; if(!validContext(key)||sequence!==badgeSequence)return;
     badge=result?{...result,context:key}:null;
     const dialog=document.getElementById('club-dialog');
-    dialog.innerHTML=`<h2 id="club-dialog-title">Badge</h2><p>${esc(student.first_name+' '+student.last_name)}</p>${result?`<img class="badge-qr" src="${esc(image.dataURL)}" alt="Student badge QR code"><p id="badge-status" class="club-note">Sticker ID <b>${esc(result.tag_uid)}</b></p><div class="club-actions">${button('Share printable badge','badge-print')}${button('Replace sticker…','badge-replace',id)}</div>`:`<p id="badge-status" class="club-note">${replace?'Scan an unassigned replacement sticker. The current badge works until the new sticker is saved.':'Scan an NTAG215 sticker to assign it and create the student’s QR badge.'}</p><div class="club-actions">${button('Scan NFC sticker','badge-scan-uid',id)}</div>`}<div class="modal-actions">${button('Back to student','detail',id)}${button('Done','close')}</div>`;
+    const stickerLabel = web ? '' : `<p id="badge-status" class="club-note">Sticker ID <b>${esc(result?.tag_uid)}</b></p>`;
+    const printable = `${button(web?'Download printable badge':'Share printable badge','badge-print')}${web?'':button('Replace sticker…','badge-replace',id)}`;
+    const unassigned = web ? 'Assign a badge for this student in the installed TURC app.' : replace
+      ? 'Scan an unassigned replacement sticker. The current badge works until the new sticker is saved.'
+      : 'Scan an NTAG215 sticker to assign it and create the student’s QR badge.';
+    const assign = web ? '' : `<div class="club-actions">${button('Scan NFC sticker','badge-scan-uid',id)}</div>`;
+    const content = result
+      ? `<img class="badge-qr" src="${esc(image.dataURL)}" alt="Student badge QR code">${stickerLabel}<div class="club-actions">${printable}</div>`
+      : `<p id="badge-status" class="club-note">${unassigned}</p>${assign}`;
+    dialog.innerHTML=`<h2 id="club-dialog-title">Badge</h2><p>${esc(student.first_name+' '+student.last_name)}</p>${content}
+      <div class="modal-actions">${button('Back to student','detail',id)}${button('Done','close')}</div>`;
     if(!dialog.open)dialog.showModal();
   }
   return {
     configure(c,get,onChange) { client=c; getContext=get; changed=onChange;
       walk.configure(c,get,onChange);
-      if(isNative) {
+      if(scannerAvailable) {
         plugin.addListener('scan',event=>receive(event).catch(()=>{}));
         plugin.addListener('closed',event=>{if(runID===event.runID)runID=null;});
       }
@@ -100,10 +110,13 @@ export function createScanning(plugin,isNative) {
     loadHome(){return walk.load({quiet:true});},
     async loadPanel(){if(scanMode==='walk'&&!walk.pending)await walk.load();else if(scanMode==='turc'){await loadCourse();changed(true);}},
     clearBadge() {badgeSequence++;badge=null;},
-    reset() {generation++;badgeSequence++;queue=[];pending=null;badge=null;course=null;latest=null;count=0;confirmed=new Set();error='';settingsOpen=false;runID=null;walk.reset();scanMode='menu';if(isNative)plugin.close().catch(()=>{});},
+    reset() {generation++;badgeSequence++;queue=[];pending=null;badge=null;course=null;latest=null;count=0;confirmed=new Set();error='';settingsOpen=false;runID=null;walk.reset();scanMode='menu';if(scannerAvailable)plugin.close().catch(()=>{});},
     handles(name) {return ['scan-qr','scan-nfc','scan-settings','scan-retry','scan-discard','scan-mode-menu','scan-mode-turc','scan-mode-walk','walk-camera','walk-select','walk-load','walk-retry','badge','badge-replace','badge-replace-confirm','badge-scan-uid','badge-print'].includes(name);},
     async handle(name,id) {
       const c=getContext(),access=scanAccess(c);
+      if(web&&['scan-nfc','badge-replace','badge-replace-confirm','badge-scan-uid'].includes(name)) {
+        throw Error('Sticker scanning and assignment require the installed TURC app.');
+      }
       if(name.startsWith('scan-mode-')) {
         const next=name.slice('scan-mode-'.length);
         if((next==='turc'&&!access.run)||(next==='walk'&&!access.walk))throw Error('Scanning is unavailable for this account.');
@@ -120,15 +133,15 @@ export function createScanning(plugin,isNative) {
       if(name==='scan-discard'){pending=null;error='Retry discarded. A server-committed lap remains recorded; refresh totals before rescanning.';changed();return;}
       if(name==='scan-qr'||name==='scan-nfc') {
         if(opening)return;
-        if(!isNative||pending)throw Error('Resolve the pending scan first.');
+        if(!scannerAvailable||pending)throw Error('Resolve the pending scan first.');
         opening=true;
         const key=contextKey(c);
         try{await loadCourse(); if(!validContext(key))return; if(!course?.configured)throw Error('Ask an Admin to configure the course.');
-          runID=crypto.randomUUID(); await plugin.open({runID,school:c.school.name,mode:name==='scan-nfc'?'nfc':'qr'});
+          runID=crypto.randomUUID(); await plugin.open({runID,school:c.school.name,mode:name==='scan-nfc'?'nfc':'qr',...scannerAppearance()});
           if(!validContext(key))await plugin.close();
         }finally{opening=false;}return;
       }
-      if(!isNative)throw Error('Open the installed TURC app to manage QR and NFC badges.');
+      if(!scannerAvailable)throw Error('Open the installed TURC app to manage QR and NFC badges.');
       if(name==='badge')return showBadge(id);
       if(name==='badge-replace'){
         const dialog=document.getElementById('club-dialog');dialog.innerHTML=`<h2>Replace this sticker?</h2><p>After you scan and assign a new sticker UID, the previous sticker and printed QR will stop working. Lap history stays intact. Print the updated badge after assignment.</p><div class="club-actions">${button('Scan replacement sticker','badge-replace-confirm',id)}${button('Cancel','badge',id)}</div>`;return;
@@ -138,7 +151,7 @@ export function createScanning(plugin,isNative) {
         if(pairing)return;if(c.role!=='admin')throw Error('Admin access required.');
         const key=contextKey(c),sequence=badgeSequence;pairing=true;
         try{
-          const read=await plugin.readTagUID();if(!validContext(key)||sequence!==badgeSequence)return;
+          const read=await plugin.readTagUID(scannerAppearance());if(!validContext(key)||sequence!==badgeSequence)return;
           const uid=String(read.uid||'').toUpperCase();if(read.tagType!=='NTAG215'||!uidPattern.test(uid))throw Error('A valid NTAG215 UID was not read.');
           await rpc('turc_assign_tag',{p_student:id,p_uid:uid,p_request:crypto.randomUUID()});
           if(!validContext(key)||sequence!==badgeSequence)return;await showBadge(id);

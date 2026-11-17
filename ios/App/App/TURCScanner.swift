@@ -46,6 +46,7 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
             guard let self = self, let parent = self.bridge?.viewController, self.scanner == nil, parent.presentedViewController == nil else { call.reject("Close the open sheet first"); return }
             let id = call.getString("runID") ?? UUID().uuidString
             let controller = TURCQRController()
+            controller.blackGold = call.getString("theme") == "black-gold"
             controller.school = call.getString("school") ?? "Your school"
             controller.walkathon = call.getString("mode") == "walkathon"
             controller.useCamera = call.getString("mode") != "nfc"
@@ -175,6 +176,7 @@ private final class TURCQRController: UIViewController, AVCaptureMetadataOutputO
     var school = "Your school"
     var useCamera = true
     var walkathon = false
+    var blackGold = false
     var onValue: ((String) -> Void)?
     var onNFC: (() -> Void)?
     var onClose: (() -> Void)?
@@ -187,14 +189,21 @@ private final class TURCQRController: UIViewController, AVCaptureMetadataOutputO
     private var configured = false
     private var closed = false
     private var paused = false
+    private let charcoal = UIColor(white: 0.10, alpha: 1)
+    private let gold = UIColor(red: 0.85, green: 0.72, blue: 0.46, alpha: 1)
+    private let ivory = UIColor(red: 0.96, green: 0.94, blue: 0.90, alpha: 1)
+    override var preferredStatusBarStyle: UIStatusBarStyle {
+        blackGold ? .lightContent : super.preferredStatusBarStyle
+    }
     override func viewDidLoad() {
-        super.viewDidLoad(); view.backgroundColor = UIColor(red: 0.11, green: 0.23, blue: 0.24, alpha: 1)
+        super.viewDidLoad()
+        view.backgroundColor = blackGold ? UIColor(white: 0.043, alpha: 1) : UIColor(red: 0.11, green: 0.23, blue: 0.24, alpha: 1)
         let top = UILabel()
         top.text = "\(walkathon ? "Walk-a-thon" : "Run Club")\n\(school)"
         top.font = UIFontMetrics(forTextStyle: .headline).scaledFont(for: .systemFont(ofSize: 17, weight: .semibold))
         top.adjustsFontForContentSizeCategory = true
-        top.textColor = .white; top.textAlignment = .center; top.numberOfLines = 3
-        top.backgroundColor = UIColor(red: 0.10, green: 0.23, blue: 0.23, alpha: 1)
+        top.textColor = blackGold ? gold : .white; top.textAlignment = .center; top.numberOfLines = 3
+        top.backgroundColor = blackGold ? charcoal : UIColor(red: 0.10, green: 0.23, blue: 0.23, alpha: 1)
         top.layer.cornerRadius = 16; top.clipsToBounds = true
         let done = button("Done", action: #selector(doneTapped))
         done.setContentHuggingPriority(.required, for: .horizontal)
@@ -204,7 +213,7 @@ private final class TURCQRController: UIViewController, AVCaptureMetadataOutputO
         titleLabel.adjustsFontForContentSizeCategory = true; titleLabel.numberOfLines = 2
         detailLabel.font = .preferredFont(forTextStyle: .body)
         detailLabel.adjustsFontForContentSizeCategory = true; detailLabel.numberOfLines = 5
-        detailLabel.textColor = UIColor(red: 0.13, green: 0.24, blue: 0.22, alpha: 1)
+        detailLabel.textColor = blackGold ? ivory : UIColor(red: 0.13, green: 0.24, blue: 0.22, alpha: 1)
         let labels = UIStackView(arrangedSubviews: [titleLabel, detailLabel]); labels.axis = .vertical; labels.spacing = 9
         var modeButtons = [button("QR camera", action: #selector(cameraTapped))]
         if !walkathon { modeButtons.append(button("NFC stickers", action: #selector(nfcTapped))) }
@@ -224,6 +233,10 @@ private final class TURCQRController: UIViewController, AVCaptureMetadataOutputO
     override func viewDidLayoutSubviews() { super.viewDidLayoutSubviews(); preview?.frame = view.bounds }
     private func button(_ title: String, action: Selector) -> UIButton {
         let button = UIButton(type: .system); var config = UIButton.Configuration.filled(); config.title = title; config.baseBackgroundColor = UIColor(white: 1, alpha: 0.9); config.baseForegroundColor = UIColor(red: 0.13, green: 0.40, blue: 0.37, alpha: 1); config.cornerStyle = .capsule
+        if blackGold {
+            config.baseBackgroundColor = action == #selector(cameraTapped) ? gold : charcoal
+            config.baseForegroundColor = action == #selector(cameraTapped) ? .black : gold
+        }
         button.configuration = config; button.addTarget(self, action: action, for: .touchUpInside); return button
     }
     @objc private func doneTapped() { onClose?() }
@@ -257,6 +270,11 @@ private final class TURCQRController: UIViewController, AVCaptureMetadataOutputO
     func shutdown() { closed = true; pauseCamera(); UIApplication.shared.isIdleTimerDisabled = false }
     func show(_ title: String, detail: String, success: Bool?) {
         titleLabel.text = title; detailLabel.text = detail
+        if blackGold {
+            titleLabel.textColor = success == false ? UIColor(red: 1, green: 0.71, blue: 0.71, alpha: 1) : gold
+            feedback.backgroundColor = charcoal
+            return
+        }
         switch success {
         case true?:
             titleLabel.textColor = UIColor(red: 0.10, green: 0.34, blue: 0.23, alpha: 1)

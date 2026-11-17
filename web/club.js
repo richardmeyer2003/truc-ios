@@ -5,8 +5,11 @@
   const dialog = document.getElementById('club-dialog');
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
   const brand = '<svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="12" fill="currentColor"/><path d="M11 25 20 12l8 1-8 13-8 1m9-7h9" stroke="#e4edba" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>TURC</span>';
-  const website = 'https://turc-school-run-club.richer2003.chatgpt.site';
+  const platform = window.TURC_PLATFORM;
+  const website = platform?.webApp ? location.origin : 'https://turc-school-run-club.richer2003.chatgpt.site';
+  const homePath = platform?.webApp ? '/mobile' : '/';
   const scanner = window.TURC_SCANNER;
+  const appearance = window.TurcAppearance;
   const permissions = state => scanner?.permissions(state)||{run:state.role==='admin',walk:state.role==='admin',leaderboard:state.role==='admin'};
   const membershipFields = 'id,user_id,district_id,school_id,role,active,can_scan_run_club,can_scan_walkathon,can_view_walkathon';
   const tabIcons = {
@@ -37,15 +40,15 @@
   }
   function resetImport() { s.parsed = null; s.mapping = null; s.preview = null; s.importErrors = []; s.fileName = ''; }
   function clearPrivateState() {
+    appearance?.apply();
     scanner?.reset(); runnerView=null; accountReturn='overview';
     epoch++; Object.assign(s, { user:null, account:null, memberships:[], schools:[], years:[], students:[], school:null, year:null, role:null,
       tab:'overview', loading:false, error:'', syncError:'', updated:null, search:'', busy:false }); resetImport();
     if (dialog.open) dialog.close(); dialog.innerHTML = '';
   }
-  const platform = window.TURC_PLATFORM;
   try {
     if (window.Capacitor?.isNativePlatform?.() && !platform) throw Error('Secure sign-in could not load. Please reinstall the latest TURC build.');
-    if (platform) await platform.ready();
+    await platform?.ready?.();
   }
   catch (error) { s.loading = false; s.error = errorText(error); render(); return; }
   const config = window.TURC_SUPABASE;
@@ -56,7 +59,7 @@
     auth: { storageKey:'turc-auth-v1', persistSession:true, autoRefreshToken:true, detectSessionInUrl:false,
       ...(platform?.authStorage ? {storage:platform.authStorage} : {}) }
   });
-  platform?.attachClient(client).catch(() => message('Automatic reconnect paused. Use Refresh to update your roster.'));
+  platform?.attachClient?.(client).catch(() => message('Automatic reconnect paused. Use Refresh to update your roster.'));
   scanner?.configure(client,()=>s,(force=false)=>{ if(['overview','scanner'].includes(s.tab)&&(force||canRefresh()))renderQuietly(); });
   async function rows(queryFactory) {
     let result = [], start = 0;
@@ -73,6 +76,7 @@
     try {
       const { data: verified, error: authError } = await client.auth.getUser(); if (authError) throw authError;
       if (token !== epoch) return; s.user = verified.user;
+      appearance?.apply(s.user);
       const [accounts, memberships, schools] = await Promise.all([
         client.from('turc_accounts').select('user_id,display_name,active').eq('user_id',s.user.id),
         rows(() => client.from('turc_memberships').select(membershipFields).eq('user_id',s.user.id).order('id')),
@@ -133,11 +137,12 @@
   async function refresh({ background = false } = {}) {
     if (!s.user || refreshing || !canRefresh()) return;
     // Read into a snapshot; a failed refresh must not clear the displayed roster.
-    const token = epoch; refreshing = true;
+    const token = epoch, previousUser = s.user; refreshing = true;
     try {
       const {data:verified,error:authError} = await client.auth.getUser(); if (authError) throw authError;
       if (token !== epoch) return;
       if (!verified.user || verified.user.id !== s.user.id) { clearPrivateState(); render(); return; }
+      if(s.user===previousUser&&!s.busy)appearance?.apply(verified.user);
       const [accounts,memberships,allSchools] = await Promise.all([
         client.from('turc_accounts').select('user_id,display_name,active').eq('user_id',verified.user.id),
         rows(() => client.from('turc_memberships').select(membershipFields).eq('user_id',verified.user.id).order('id')),
@@ -181,7 +186,7 @@
     } finally { refreshing = false; }
   }
   function renderAuth() {
-    root.innerHTML = `<main class="club-auth"><a class="club-brand" href="/">${brand}</a><section class="panel">
+    root.innerHTML = `<main class="club-auth"><a class="club-brand" href="${homePath}">${brand}</a><section class="panel">
       <h1>A little movement.<br>A shared beginning.</h1><p>Sign in to your school’s connected roster. Your runners stay with your club, across devices.</p>
       ${s.error ? `<div class="club-error" role="alert">${esc(s.error)}</div>` : ''}
       ${sessionRemovalPending ? `<div class="club-actions">${action('Retry sign-out','signout','outline')}</div>` : ''}
@@ -192,14 +197,14 @@
   }
   function render() {
     root.setAttribute('aria-busy',String(s.loading));
-    if (s.loading) { root.innerHTML = `<main class="club-auth"><a class="club-brand" href="/">${brand}</a><section class="panel club-progress"><h1>Opening your club…</h1><p>Loading your authorized school roster.</p></section></main>`; return; }
+    if (s.loading) { root.innerHTML = `<main class="club-auth"><a class="club-brand" href="${homePath}">${brand}</a><section class="panel club-progress"><h1>Opening your club…</h1><p>Loading your authorized school roster.</p></section></main>`; return; }
     if (!s.user) { renderAuth(); return; }
     if (!s.account || !s.school) {
       if(s.account&&s.memberships.some(m=>m.user_id===s.user.id&&m.active&&m.role==='admin'&&!m.school_id)){
-        root.innerHTML=`<main class="club-auth"><a class="club-brand" href="/">${brand}</a><section class="panel"><h1>No active schools</h1><p>Add or restore a school on the TURC website.</p><div class="club-actions">${websiteLink('Manage schools','schools','/club#schools')}${action('Sign out','signout','outline')}</div></section></main>`;
+        root.innerHTML=`<main class="club-auth"><a class="club-brand" href="${homePath}">${brand}</a><section class="panel"><h1>No active schools</h1><p>Add or restore a school on the TURC website.</p><div class="club-actions">${websiteLink('Manage schools','schools','/club#schools')}${action('Sign out','signout','outline')}</div></section></main>`;
         return;
       }
-      root.innerHTML = `<main class="club-auth"><a class="club-brand" href="/">${brand}</a><section class="panel"><div class="eyebrow">YOU’RE SIGNED IN</div><h1>Your club access is being set up.</h1>
+      root.innerHTML = `<main class="club-auth"><a class="club-brand" href="${homePath}">${brand}</a><section class="panel"><div class="eyebrow">YOU’RE SIGNED IN</div><h1>Your club access is being set up.</h1>
         <p>${esc(s.user.email)} is signed in, but no active school membership is available. Your administrator needs to assign your school and role.</p>
         ${s.error ? `<div class="club-error" role="alert">${esc(s.error)}</div>` : ''}<div class="club-actions">${action('Check my access','refresh')}${action('Sign out','signout','outline')}</div></section></main>`; return;
     }
@@ -272,7 +277,8 @@
   }
   function accountView() {
     const roleLabel={admin:'Admin',staff:'Staff',parent:'Family'};
-    return `<section class="panel club-panel ios-panel"><h2>${esc(s.account.display_name)}</h2><dl class="club-detail"><div><dt>Email</dt><dd>${esc(s.user.email)}</dd></div><div><dt>Role</dt><dd>${roleLabel[s.role]}</dd></div><div><dt>School</dt><dd>${esc(s.school.name)}</dd></div><div><dt>Time zone</dt><dd>${esc(s.school.timezone)}</dd></div></dl>${s.schools.length>1?schoolPicker():''}${action('Sign out','signout','outline')}</section>
+    return `<section class="panel club-panel ios-panel"><h2>${esc(s.account.display_name)}</h2><dl class="club-detail"><div><dt>Email</dt><dd>${esc(s.user.email)}</dd></div><div><dt>Role</dt><dd>${roleLabel[s.role]}</dd></div><div><dt>School</dt><dd>${esc(s.school.name)}</dd></div><div><dt>Time zone</dt><dd>${esc(s.school.timezone)}</dd></div></dl>${s.schools.length>1?schoolPicker():''}<div class="club-actions">${platform?.webApp?'<a class="btn outline" href="/club">Desktop site</a>':''}${action('Sign out','signout','outline')}</div></section>
+      ${appearance?.render()||''}
       ${s.role==='admin'?`<section class="panel club-panel ios-panel"><h2>Manage on the website</h2><div class="ios-management">${websiteLink('Manage schools','schools','/club#schools')}${websiteLink('Manage accounts','accounts','/club#accounts')}${websiteLink('Walk-a-thon registration and bibs','walkathon',`/walkathon?school=${encodeURIComponent(s.school.id)}`)}</div></section>`:''}`;
   }
   function renderStudent(view,{keepScroll=false}={}) {
@@ -344,6 +350,16 @@
   async function handleAction(target) {
     const name = target.dataset.action;
     if (s.busy && !['signout','close'].includes(name)) return;
+    if (name==='appearance') {
+      if(!appearance||s.tab!=='account'||!s.user)return;
+      const token=epoch; s.busy=true; target.disabled=true;
+      try {
+        const user=await appearance.save(client,s.user,target.dataset.themeChoice);
+        if(token===epoch){s.user=user;appearance.apply(user);}
+      } catch(error) { if(token===epoch)message(errorText(error)); }
+      finally { if(token===epoch){s.busy=false;target.disabled=false;} }
+      return;
+    }
     if(scanner?.handles(name)){if(name==='badge')runnerView=null;await scanner.handle(name,target.dataset.id);return;}
     if (name === 'signout') {
       sessionRemovalPending = true;
@@ -437,6 +453,7 @@
   });
   client.auth.onAuthStateChange((event,session) => {
     if (event === 'SIGNED_OUT') { clearPrivateState(); render(); }
+    else if(event==='USER_UPDATED'&&s.user&&s.user.id===session?.user?.id) {s.user=session.user;appearance?.apply(s.user);}
     else if (event === 'SIGNED_IN' && !signInPending && s.user?.id !== session?.user?.id) setTimeout(() => activate(session),0);
   });
   client.auth.getSession().then(({data,error}) => { if (error) { s.loading = false; s.error = errorText(error); render(); } else activate(data.session); });
