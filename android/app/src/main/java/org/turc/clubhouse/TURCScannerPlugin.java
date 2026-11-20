@@ -173,7 +173,9 @@ public class TURCScannerPlugin extends Plugin {
         if (!walkathon && pairing == null) {
             LinearLayout modes = new LinearLayout(getActivity());
             modes.addView(button("QR camera", this::startCamera), new LinearLayout.LayoutParams(0, -2, 1));
-            modes.addView(button("NFC stickers", this::startReader), new LinearLayout.LayoutParams(0, -2, 1));
+            if (nfc() != null) {
+                modes.addView(button("NFC stickers", this::startReader), new LinearLayout.LayoutParams(0, -2, 1));
+            }
             layout.addView(modes, new LinearLayout.LayoutParams(-1, -2));
         }
         dialog.setContentView(layout);

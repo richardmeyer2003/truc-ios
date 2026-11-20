@@ -5,10 +5,12 @@ import { scanAccess } from './scan-access.mjs';
 const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const button = (text,action,id='') => `<button type="button" class="btn" data-action="${action}" data-id="${esc(id)}">${text}</button>`;
 const allowed = context => context?.year && scanAccess(context).run;
+const nfcActions = new Set(['scan-nfc', 'badge-replace', 'badge-replace-confirm', 'badge-scan-uid']);
 
 export function createScanning(plugin,scannerAvailable,{ web = false } = {}) {
   const walk = createWalkScanning(plugin,scannerAvailable);
   let scanMode = 'menu';
+  let supportsNFC = false;
   let client, getContext, changed, course=null, latest=null, badge=null, runID=null, queue=[], processing=false, pending=null;
   let generation=0, count=0, error='', settingsOpen=false, opening=false, badgeSequence=0, pairing=false;
   let confirmed=new Set();
@@ -53,7 +55,7 @@ export function createScanning(plugin,scannerAvailable,{ web = false } = {}) {
     const c=getContext(),access=scanAccess(c);
     if(!access.run&&!access.walk)return '<section class="panel club-panel"><h2>Scanning is unavailable</h2><p>Ask your school Admin to check your access.</p></section>';
     if(scanMode==='menu'||(scanMode==='walk'?!access.walk:!access.run))return `<div class="scan-choices">
-      ${access.run?`<button type="button" class="scan-choice" data-action="scan-mode-turc"><span><strong>Run Club</strong><small>${web?'Student QR badges':'QR badges and NFC stickers'}</small></span><span aria-hidden="true">›</span></button>`:''}
+      ${access.run?`<button type="button" class="scan-choice" data-action="scan-mode-turc"><span><strong>Run Club</strong><small>${supportsNFC?'QR badges and NFC stickers':'Student QR badges'}</small></span><span aria-hidden="true">›</span></button>`:''}
       ${access.walk?'<button type="button" class="scan-choice" data-action="scan-mode-walk"><span><strong>Walk-a-thon</strong><small>Event bib QR codes</small></span><span aria-hidden="true">›</span></button>':''}</div>`;
     const back=`<div class="scan-back">${button('‹ Scan options','scan-mode-menu')}</div>`;
     if(scanMode==='walk') return back+walk.panel();
@@ -63,7 +65,7 @@ export function createScanning(plugin,scannerAvailable,{ web = false } = {}) {
     <p>${course?.configured ? `${miles(course.distance_mm)} miles per lap · ${course.cooldown_seconds} second minimum lap interval` : 'An Admin must enter the measured lap distance before scanning.'}</p>
     ${error ? `<div class="club-error" role="alert">${esc(error)}</div>` : ''}
     ${pending ? `<div class="notice">One scan is unconfirmed. Retry before scanning more. This pending result is kept only while this app stays open.</div><div class="club-actions">${button('Retry last scan','scan-retry')}${button('Discard pending retry','scan-discard')}</div>` : ''}
-    <div class="scanner-actions">${scannerAvailable&&course?.configured&&!pending ? button('Open QR camera','scan-qr')+(web?'':button('Scan NFC stickers','scan-nfc')) : !scannerAvailable ? '<p>Camera and NFC scanning are available in the installed TURC app.</p>' : ''}</div>
+    <div class="scanner-actions">${scannerAvailable&&course?.configured&&!pending ? button('Open QR camera','scan-qr')+(supportsNFC?button('Scan NFC stickers','scan-nfc'):'') : !scannerAvailable ? '<p>Camera scanning is available in the installed TURC app.</p>' : ''}</div>
     ${latest ? `<div class="scanner-result" data-result="${latest.accepted?'counted':'rejected'}" role="status"><h3>${esc(latest.title)}</h3>${latest.student?`<p><strong>${esc(latest.student)}</strong></p>`:''}<p>${esc(latest.detail)}</p></div>` : ''}
     <p class="club-note">${count} confirmed ${count===1?'lap':'laps'} on this device. An internet connection is required.</p>
     ${c.role==='admin' ? button(settingsOpen?'Hide course settings':'Course settings','scan-settings') : ''}
@@ -84,11 +86,15 @@ export function createScanning(plugin,scannerAvailable,{ web = false } = {}) {
     badge=result?{...result,context:key}:null;
     const dialog=document.getElementById('club-dialog');
     const stickerLabel = web ? '' : `<p id="badge-status" class="club-note">Sticker ID <b>${esc(result?.tag_uid)}</b></p>`;
-    const printable = `${button(web?'Download printable badge':'Share printable badge','badge-print')}${web?'':button('Replace sticker…','badge-replace',id)}`;
-    const unassigned = web ? 'Assign a badge for this student in the installed TURC app.' : replace
-      ? 'Scan an unassigned replacement sticker. The current badge works until the new sticker is saved.'
-      : 'Scan an NTAG215 sticker to assign it and create the student’s QR badge.';
-    const assign = web ? '' : `<div class="club-actions">${button('Scan NFC sticker','badge-scan-uid',id)}</div>`;
+    const printable = button(web?'Download printable badge':'Share printable badge','badge-print')
+      + (supportsNFC ? button('Replace sticker…','badge-replace',id) : '');
+    let unassigned = 'Assign a badge for this student using the TURC app on an NFC-capable device.';
+    if (supportsNFC) {
+      unassigned = replace
+        ? 'Scan an unassigned replacement sticker. The current badge works until the new sticker is saved.'
+        : 'Scan an NTAG215 sticker to assign it and create the student’s QR badge.';
+    }
+    const assign = supportsNFC ? `<div class="club-actions">${button('Scan NFC sticker','badge-scan-uid',id)}</div>` : '';
     const content = result
       ? `<img class="badge-qr" src="${esc(image.dataURL)}" alt="Student badge QR code">${stickerLabel}<div class="club-actions">${printable}</div>`
       : `<p id="badge-status" class="club-note">${unassigned}</p>${assign}`;
@@ -97,6 +103,16 @@ export function createScanning(plugin,scannerAvailable,{ web = false } = {}) {
     if(!dialog.open)dialog.showModal();
   }
   return {
+    async detectCapabilities() {
+      if (!scannerAvailable || web) return;
+      try {
+        const capabilities = await plugin.capabilities();
+        supportsNFC = capabilities?.nfc === true;
+      } catch {
+        // Keep QR usable if the scanner cannot report its capabilities.
+        supportsNFC = false;
+      }
+    },
     configure(c,get,onChange) { client=c; getContext=get; changed=onChange;
       walk.configure(c,get,onChange);
       if(scannerAvailable) {
@@ -114,8 +130,8 @@ export function createScanning(plugin,scannerAvailable,{ web = false } = {}) {
     handles(name) {return ['scan-qr','scan-nfc','scan-settings','scan-retry','scan-discard','scan-mode-menu','scan-mode-turc','scan-mode-walk','walk-camera','walk-select','walk-load','walk-retry','badge','badge-replace','badge-replace-confirm','badge-scan-uid','badge-print'].includes(name);},
     async handle(name,id) {
       const c=getContext(),access=scanAccess(c);
-      if(web&&['scan-nfc','badge-replace','badge-replace-confirm','badge-scan-uid'].includes(name)) {
-        throw Error('Sticker scanning and assignment require the installed TURC app.');
+      if (!supportsNFC && nfcActions.has(name)) {
+        throw Error(web ? 'Sticker scanning and assignment require the installed TURC app.' : 'This device cannot scan NFC stickers.');
       }
       if(name.startsWith('scan-mode-')) {
         const next=name.slice('scan-mode-'.length);

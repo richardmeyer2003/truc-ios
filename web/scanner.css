@@ -1,5 +1,6 @@
 .scanner-actions { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:25px 0; }
 .scanner-actions .btn { padding:23px 16px; font-size:17px; }
+.scanner-actions .btn:only-child { grid-column:1 / -1; }
 .scanner-result { padding:22px; background:#e0f1e7b0; border:1px solid #ffffffd9; border-radius:22px; margin:22px 0; }
 .scanner-result h3 { font-size:21px; margin-bottom:9px; }
 .scanner-settings { display:grid; gap:18px; margin-top:25px; }

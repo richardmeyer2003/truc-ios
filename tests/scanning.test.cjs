@@ -26,14 +26,16 @@ test('feedback distinguishes accepted laps from cooldown and never claims reject
   assert.equal(no.nfcDetail,undefined);
 });
 
-async function harness(rpc, source = 'qr') {
+async function harness(rpc, source = 'qr', nfcSupported = true) {
   const {createScanning}=await import('../src/scanning.mjs');
   const storage=new Map();global.localStorage={getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)};
   const events={},feedback=[];let options;
   const plugin={addListener:async(name,fn)=>{events[name]=fn;},open:async o=>{options=o;},close:async()=>{},feedback:async f=>feedback.push(f)};
+  if (nfcSupported !== null) plugin.capabilities = async () => ({ nfc:nfcSupported });
   let context={user:{id:'adult'},school:{id:'school',name:'Test school'},year:{id:'year'},role:'staff',
     memberships:[{user_id:'adult',school_id:'school',role:'staff',active:true,can_scan_run_club:true}]};
   const scanner=createScanning(plugin,true);
+  await scanner.detectCapabilities();
   scanner.configure({rpc:async(name,args)=>name==='turc_scan_course'?{data:{configured:true,name:'Loop',distance_mm:100000,cooldown_seconds:30}}:rpc(name,args)},()=>context,()=>{});
   await scanner.handle('scan-mode-turc');
   await scanner.handle(source === 'nfc' ? 'scan-nfc' : 'scan-qr');
@@ -46,10 +48,23 @@ test('a confirmed NFC scan sends both mileage figures to the native scanner', as
     assert.equal(args.p_source, 'nfc');
     return { data: { accepted: true, name: 'Example Runner', totals: { today_mm: 965606, year_mm: 965606 } } };
   }, 'nfc');
+  assert.match(h.scanner.panel(), /Scan NFC stickers/);
   await h.scan();
   assert.equal(h.feedback.length, 1);
   assert.equal(h.feedback[0].student, 'Example Runner');
   assert.equal(h.feedback[0].nfcDetail, 'Today 0.60 mi\n4.40 mi to next milestone');
+});
+test('devices without NFC detection keep QR scanning and omit NFC scan actions', async () => {
+  for (const nfcSupported of [false, null]) {
+    const { scanner } = await harness(async () => ({ data: null }), 'qr', nfcSupported);
+    assert.match(scanner.panel(), /Open QR camera/);
+    assert.doesNotMatch(scanner.panel(), /Scan NFC stickers/);
+    await assert.rejects(scanner.handle('scan-nfc'), /cannot scan NFC/);
+    await assert.rejects(scanner.handle('badge-scan-uid', 'student'), /cannot scan NFC/);
+    await scanner.handle('scan-mode-menu');
+    assert.match(scanner.panel(), /Student QR badges/);
+    assert.doesNotMatch(scanner.panel(), /NFC stickers/);
+  }
 });
 test('uncertain transport result retries the identical event and counts its confirmation once',async()=>{
   const payloads=[];let attempts=0;

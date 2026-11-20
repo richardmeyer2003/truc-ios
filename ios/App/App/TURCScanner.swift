@@ -50,8 +50,13 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
             controller.school = call.getString("school") ?? "Your school"
             controller.walkathon = call.getString("mode") == "walkathon"
             controller.useCamera = call.getString("mode") != "nfc"
+            let supportsNFC = !controller.walkathon && NFCTagReaderSession.readingAvailable
+            guard controller.useCamera || supportsNFC else {
+                call.reject("This device cannot scan NFC stickers.")
+                return
+            }
             controller.onValue = { [weak self] value in self?.emit(value, source: "qr") }
-            if !controller.walkathon { controller.onNFC = { [weak self] in self?.readNFC() } }
+            if supportsNFC { controller.onNFC = { [weak self] in self?.readNFC() } }
             controller.onClose = { [weak self] in self?.stop() }
             self.scanner = controller; self.runID = id; self.recent = [:]; self.awaitingResult = false
             controller.modalPresentationStyle = .fullScreen
@@ -65,8 +70,9 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         if isWalkathon { valid = source == "qr" && validWalkBib(value) }
         else { valid = source == "nfc" ? value.range(of: "^[A-F0-9]{14}$", options: .regularExpression) != nil : validBadge(value) }
         guard valid else {
+            let runClubHelp = scanner?.onNFC == nil ? "Use a student’s QR badge." : "Use a QR badge or assigned NTAG215 sticker."
             scanner?.show(isWalkathon ? "Use a Walk-a-thon bib" : "Not a TURC badge",
-                          detail: isWalkathon ? "Scan the QR code printed on the event bib." : "Use a QR badge or assigned NTAG215 sticker.", success: false)
+                          detail: isWalkathon ? "Scan the QR code printed on the event bib." : runClubHelp, success: false)
             return
         }
         let now = Date()
@@ -224,7 +230,7 @@ private final class TURCQRController: UIViewController, AVCaptureMetadataOutputO
         detailLabel.textColor = blackGold ? ivory : UIColor(red: 0.13, green: 0.24, blue: 0.22, alpha: 1)
         let labels = UIStackView(arrangedSubviews: [titleLabel, detailLabel]); labels.axis = .vertical; labels.spacing = 9
         var modeButtons = [button("QR camera", action: #selector(cameraTapped))]
-        if !walkathon { modeButtons.append(button("NFC stickers", action: #selector(nfcTapped))) }
+        if onNFC != nil { modeButtons.append(button("NFC stickers", action: #selector(nfcTapped))) }
         let modes = UIStackView(arrangedSubviews: modeButtons); modes.spacing = 12; modes.distribution = .fillEqually
         for child in [header, feedback, modes] { child.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(child) }
         labels.translatesAutoresizingMaskIntoConstraints = false; feedback.addSubview(labels)
@@ -237,7 +243,15 @@ private final class TURCQRController: UIViewController, AVCaptureMetadataOutputO
             labels.leadingAnchor.constraint(equalTo: feedback.leadingAnchor, constant: 20), labels.trailingAnchor.constraint(equalTo: feedback.trailingAnchor, constant: -20), labels.topAnchor.constraint(equalTo: feedback.topAnchor, constant: 18), labels.bottomAnchor.constraint(equalTo: feedback.bottomAnchor, constant: -18)
         ])
         positionFeedback(forNFC: !useCamera)
-        show("Ready to scan", detail: walkathon ? "Point the camera at the event bib." : "Scan a QR badge or tap NFC stickers.", success: nil)
+        let prompt: String
+        if walkathon {
+            prompt = "Point the camera at the event bib."
+        } else if onNFC != nil {
+            prompt = "Scan a QR badge or tap NFC stickers."
+        } else {
+            prompt = "Point the camera at the student’s QR badge."
+        }
+        show("Ready to scan", detail: prompt, success: nil)
         UIApplication.shared.isIdleTimerDisabled = true
         if useCamera { startCamera() }
     }
@@ -264,7 +278,10 @@ private final class TURCQRController: UIViewController, AVCaptureMetadataOutputO
     }
     private func configureCamera() {
         if configured { resumeCamera(); return }
-        guard let device = AVCaptureDevice.default(for: .video), let input = try? AVCaptureDeviceInput(device: device), capture.canAddInput(input) else { show("Camera unavailable", detail: walkathon ? "Try reopening the scanner." : "Try NFC or reopen the scanner.", success: false); return }
+        guard let device = AVCaptureDevice.default(for: .video), let input = try? AVCaptureDeviceInput(device: device), capture.canAddInput(input) else {
+            show("Camera unavailable", detail: onNFC == nil ? "Try reopening the scanner." : "Try NFC or reopen the scanner.", success: false)
+            return
+        }
         capture.beginConfiguration(); capture.addInput(input)
         let output = AVCaptureMetadataOutput()
         guard capture.canAddOutput(output) else { capture.commitConfiguration(); show("QR scanner unavailable", detail: "Try reopening the scanner.", success: false); return }

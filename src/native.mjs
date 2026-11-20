@@ -5,7 +5,8 @@ import { createScanning } from './scanning.mjs';
 
 const isNative = Capacitor.isNativePlatform();
 const native = registerPlugin('TURCNative');
-window.TURC_SCANNER = createScanning(registerPlugin('TURCScanner'),isNative);
+const scanner = createScanning(registerPlugin('TURCScanner'),isNative);
+window.TURC_SCANNER = scanner;
 window.TURC_PLATFORM = {
   isNative,
   applyTheme(theme) {
@@ -15,6 +16,7 @@ window.TURC_PLATFORM = {
     if (isNative && !Capacitor.isPluginAvailable('TURCNative')) {
       throw new Error('Secure sign-in is unavailable in this build. Please install a new TURC build.');
     }
+    await scanner.detectCapabilities();
   },
   authStorage: isNative ? keychainStorage(native) : undefined,
   async shareCSV(name, text) { await native.shareCSV({ name, text }); },
