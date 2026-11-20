@@ -21,10 +21,12 @@ test('feedback distinguishes accepted laps from cooldown and never claims reject
   const {scanFeedback}=await import('../src/scan-contract.mjs');
   const ok=scanFeedback({accepted:true,name:'Maya Example',totals:{today_laps:2,today_mm:1609344,year_mm:3218688,lifetime_mm:4828032}});
   assert.equal(ok.title,'Lap counted');assert.equal(ok.student,'Maya Example');assert.equal(ok.detail,'Today 1.00 mi · 3.00 mi to next milestone');
+  assert.equal(ok.nfcDetail,'Today 1.00 mi\n3.00 mi to next milestone');
   const no=scanFeedback({accepted:false,reason:'cooldown'});assert.equal(no.accepted,false);assert.equal(no.detail,'No lap added.');
+  assert.equal(no.nfcDetail,undefined);
 });
 
-async function harness(rpc) {
+async function harness(rpc, source = 'qr') {
   const {createScanning}=await import('../src/scanning.mjs');
   const storage=new Map();global.localStorage={getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)};
   const events={},feedback=[];let options;
@@ -34,9 +36,21 @@ async function harness(rpc) {
   const scanner=createScanning(plugin,true);
   scanner.configure({rpc:async(name,args)=>name==='turc_scan_course'?{data:{configured:true,name:'Loop',distance_mm:100000,cooldown_seconds:30}}:rpc(name,args)},()=>context,()=>{});
   await scanner.handle('scan-mode-turc');
-  await scanner.handle('scan-qr');
-  return {scanner,feedback,context:c=>{context=c;},scan:(id='11111111-1111-4111-8111-111111111111')=>events.scan({runID:options.runID,value:badge,source:'qr',eventID:id,observedAt:'2026-11-09T22:00:00Z'})};
+  await scanner.handle(source === 'nfc' ? 'scan-nfc' : 'scan-qr');
+  const value = source === 'nfc' ? '04AABBCCDDEEFF' : badge;
+  return {scanner,feedback,context:c=>{context=c;},scan:(id='11111111-1111-4111-8111-111111111111')=>events.scan({runID:options.runID,value,source,eventID:id,observedAt:'2026-11-09T22:00:00Z'})};
 }
+test('a confirmed NFC scan sends both mileage figures to the native scanner', async () => {
+  const h = await harness(async (name, args) => {
+    assert.equal(name, 'turc_submit_scan');
+    assert.equal(args.p_source, 'nfc');
+    return { data: { accepted: true, name: 'Example Runner', totals: { today_mm: 965606, year_mm: 965606 } } };
+  }, 'nfc');
+  await h.scan();
+  assert.equal(h.feedback.length, 1);
+  assert.equal(h.feedback[0].student, 'Example Runner');
+  assert.equal(h.feedback[0].nfcDetail, 'Today 0.60 mi\n4.40 mi to next milestone');
+});
 test('uncertain transport result retries the identical event and counts its confirmation once',async()=>{
   const payloads=[];let attempts=0;
   const h=await harness(async(name,args)=>{payloads.push(args);if(++attempts===1)throw Error('Connection lost after commit');return {data:{accepted:true,replayed:true,name:'Maya',totals:{today_laps:1}}};});

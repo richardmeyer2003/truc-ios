@@ -82,12 +82,15 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         guard nfc == nil, !awaitingResult, scanner?.walkathon != true else { return }
         guard NFCTagReaderSession.readingAvailable else { scanner?.show("NFC unavailable", detail: "Check your signing method's NFC entitlement. QR is available separately.", success: false); return }
         scanner?.pauseCamera()
+        scanner?.positionFeedback(forNFC: true)
         let reader = TURCUIDReader()
         nfc = reader
         reader.onRead = { [weak self] value in self?.emit(value, source: "nfc") }
-        reader.onFinish = { [weak self] error in
-            self?.nfc = nil; self?.scanner?.resumeCamera()
-            if let error = error { self?.scanner?.show("NFC stopped", detail: error, success: false) }
+        reader.onFinish = { [weak self, weak reader] error in
+            guard let self, let reader, self.nfc === reader else { return }
+            self.nfc = nil
+            self.scanner?.resumeCamera()
+            if let error { self.scanner?.show("NFC stopped", detail: error, success: false) }
         }
         reader.begin()
     }
@@ -104,11 +107,14 @@ public final class TURCScannerPlugin: CAPPlugin, CAPBridgedPlugin {
             let title = String((call.getString("title") ?? "").prefix(120))
             let student = String((call.getString("student") ?? "").prefix(160))
             let message = String((call.getString("detail") ?? "").prefix(240))
-            let detail = [student, message].filter { !$0.isEmpty }.joined(separator: "\n")
             let accepted = call.getBool("accepted") ?? false
+            let nfcDetail = String((call.getString("nfcDetail") ?? "").prefix(120))
+            let usesCompactNFC = self?.nfc != nil && accepted && !nfcDetail.isEmpty
+            let detail = [student, usesCompactNFC ? nfcDetail : message].filter { !$0.isEmpty }.joined(separator: "\n")
             self?.awaitingResult = call.getBool("pending") ?? false
             self?.scanner?.show(title, detail: detail, success: accepted)
-            self?.nfc?.message(title + "\n" + detail)
+            // The system NFC sheet only has room for a short message. Keep the full result in the app.
+            self?.nfc?.message(usesCompactNFC ? nfcDetail : [title, message].filter { !$0.isEmpty }.joined(separator: "\n"))
             UINotificationFeedbackGenerator().notificationOccurred(accepted ? .success : .warning)
             if accepted { AudioServicesPlaySystemSound(1104) }
             if UIAccessibility.isVoiceOverRunning {
@@ -186,6 +192,8 @@ private final class TURCQRController: UIViewController, AVCaptureMetadataOutputO
     private let titleLabel = UILabel()
     private let detailLabel = UILabel()
     private let feedback = UIView()
+    private var feedbackBelowHeader: NSLayoutConstraint?
+    private var feedbackAboveControls: NSLayoutConstraint?
     private var configured = false
     private var closed = false
     private var paused = false
@@ -220,12 +228,15 @@ private final class TURCQRController: UIViewController, AVCaptureMetadataOutputO
         let modes = UIStackView(arrangedSubviews: modeButtons); modes.spacing = 12; modes.distribution = .fillEqually
         for child in [header, feedback, modes] { child.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(child) }
         labels.translatesAutoresizingMaskIntoConstraints = false; feedback.addSubview(labels)
+        feedbackBelowHeader = feedback.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 14)
+        feedbackAboveControls = feedback.bottomAnchor.constraint(equalTo: modes.topAnchor, constant: -18)
         NSLayoutConstraint.activate([
             header.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20), header.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20), header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12), header.heightAnchor.constraint(greaterThanOrEqualToConstant: 56),
             modes.leadingAnchor.constraint(equalTo: header.leadingAnchor), modes.trailingAnchor.constraint(equalTo: header.trailingAnchor), modes.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -18), modes.heightAnchor.constraint(greaterThanOrEqualToConstant: 56),
-            feedback.leadingAnchor.constraint(equalTo: header.leadingAnchor), feedback.trailingAnchor.constraint(equalTo: header.trailingAnchor), feedback.bottomAnchor.constraint(equalTo: modes.topAnchor, constant: -18),
+            feedback.leadingAnchor.constraint(equalTo: header.leadingAnchor), feedback.trailingAnchor.constraint(equalTo: header.trailingAnchor),
             labels.leadingAnchor.constraint(equalTo: feedback.leadingAnchor, constant: 20), labels.trailingAnchor.constraint(equalTo: feedback.trailingAnchor, constant: -20), labels.topAnchor.constraint(equalTo: feedback.topAnchor, constant: 18), labels.bottomAnchor.constraint(equalTo: feedback.bottomAnchor, constant: -18)
         ])
+        positionFeedback(forNFC: !useCamera)
         show("Ready to scan", detail: walkathon ? "Point the camera at the event bib." : "Scan a QR badge or tap NFC stickers.", success: nil)
         UIApplication.shared.isIdleTimerDisabled = true
         if useCamera { startCamera() }
@@ -266,7 +277,23 @@ private final class TURCQRController: UIViewController, AVCaptureMetadataOutputO
         for object in metadataObjects { if let qr = object as? AVMetadataMachineReadableCodeObject, let value = qr.stringValue { onValue?(value) } }
     }
     func pauseCamera() { paused = true; cameraQueue.async { [weak self] in self?.capture.stopRunning() } }
-    func resumeCamera() { guard !closed else { return }; paused = false; if configured && useCamera { cameraQueue.async { [weak self] in self?.capture.startRunning() } } }
+    func positionFeedback(forNFC: Bool) {
+        if forNFC {
+            feedbackAboveControls?.isActive = false
+            feedbackBelowHeader?.isActive = true
+        } else {
+            feedbackBelowHeader?.isActive = false
+            feedbackAboveControls?.isActive = true
+        }
+    }
+    func resumeCamera() {
+        guard !closed else { return }
+        paused = false
+        if configured && useCamera {
+            positionFeedback(forNFC: false)
+            cameraQueue.async { [weak self] in self?.capture.startRunning() }
+        }
+    }
     func shutdown() { closed = true; pauseCamera(); UIApplication.shared.isIdleTimerDisabled = false }
     func show(_ title: String, detail: String, success: Bool?) {
         titleLabel.text = title; detailLabel.text = detail
